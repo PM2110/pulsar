@@ -2,14 +2,12 @@ import { app } from './app.js'
 import { env } from './config/env.config.js'
 import { connectRedis } from './config/redis.config.js'
 import { pool } from './config/db.config.js'
-import { runMigrations } from './db/migrate.js'
 
 async function start() {
   const port = parseInt(env.PORT, 10) || 3000
 
   try {
-    // Connect to external services & run migrations
-    await runMigrations(false)
+    // Connect to external services
     await connectRedis()
     
     const server = app.listen(port, () => {
