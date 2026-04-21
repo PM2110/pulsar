@@ -8,6 +8,7 @@ import { pinoHttp } from 'pino-http'
 import { env } from './config/env.config.js'
 import { errorHandler } from './middlewares/errorHandler.middleware.js'
 import healthRoutes from './routes/health.route.js'
+import jobRoutes from './routes/job.route.js'
 
 const app: Express = express()
 
@@ -49,6 +50,7 @@ app.use(cookieParser(env.COOKIE_SECRET))
 
 // Routes
 app.use('/health', healthRoutes)
+app.use('/api/jobs', jobRoutes)
 
 // Error Handler (must be last)
 app.use(errorHandler)
