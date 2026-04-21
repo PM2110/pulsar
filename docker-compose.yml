@@ -1,10 +1,16 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      target: development
     env_file:
       - .env.${NODE_ENV:-development}
     ports:
       - "${PORT:-3000}:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    command: pnpm dev
     depends_on:
       db:
         condition: service_healthy

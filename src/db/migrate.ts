@@ -6,7 +6,12 @@ import { pool } from '../config/db.config.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-async function migrate() {
+/**
+ * Runs the database migrations located in the migrations directory.
+ * @param closePool Whether to close the database pool after completion. 
+ *                  Set to false when running as part of the app startup.
+ */
+export async function runMigrations(closePool: boolean = true) {
   const migrationFile = path.join(__dirname, 'migrations', '001_initial_schema.sql')
   
   try {
@@ -19,10 +24,20 @@ async function migrate() {
     console.log('✅ Migration completed successfully!')
   } catch (error) {
     console.error('❌ Migration failed:', error)
-    process.exit(1)
+    // If it's a standalone script, we exit. 
+    // If it's part of the app, we throw to be caught by the server startup.
+    if (closePool) {
+      process.exit(1)
+    }
+    throw error
   } finally {
-    await pool.end()
+    if (closePool) {
+      await pool.end()
+    }
   }
 }
 
-migrate()
+// Check if script is run directly
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+  runMigrations(true)
+}
