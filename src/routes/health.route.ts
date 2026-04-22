@@ -1,8 +1,8 @@
 import { Router } from 'express'
-import * as healthController from '../controllers/health.controller.js'
+import { getHealth } from '../controllers/health.controller.js'
 
 const router: Router = Router()
 
-router.get('/', healthController.getHealth)
+router.get('/', getHealth)
 
 export default router
