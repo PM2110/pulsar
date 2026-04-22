@@ -9,7 +9,7 @@ async function start() {
   try {
     // Connect to external services
     await connectRedis()
-    
+
     const server = app.listen(port, () => {
       console.log(`🚀 Server listening on port ${port} in ${env.NODE_ENV} mode`)
     })
@@ -17,17 +17,17 @@ async function start() {
     // Graceful Shutdown
     const shutdown = async (signal: string) => {
       console.log(`\nReceived ${signal}, shutting down gracefully...`)
-      
+
       server.close(async () => {
         console.log('HTTP server closed')
-        
+
         // Close database pool
         await pool.end()
         console.log('Database pool closed')
-        
+
         // Close Redis
         // await redisClient.quit() // client will close on process exit or can be handled here
-        
+
         process.exit(0)
       })
 
