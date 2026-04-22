@@ -5,16 +5,26 @@ import { redisClient } from '../config/redis.config.js'
  */
 export const queueService = {
   /**
-   * Enqueues a job ID into a specific Redis list.
-   * @param queueName The name of the queue (e.g., 'default', 'notifications')
+   * Enqueues a job ID into a specific Redis Sorted Set with priority.
+   * Score = (10 - priority) * 10,000,000,000,000 + timestamp
+   * This ensures higher priority jobs have lower scores and come first.
+   * @param queueName The name of the queue
    * @param jobId The ID of the job from the database
+   * @param priority The priority level (higher is more important)
    */
-  async enqueueJob(queueName: string, jobId: string | number): Promise<void> {
+  async enqueueJob(queueName: string, jobId: string | number, priority: number = 0): Promise<void> {
     try {
       const redisKey = `queue:${queueName}`
-      // RPUSH adds the job ID to the tail of the list
-      await redisClient.rPush(redisKey, jobId.toString())
-      console.log(`📡 Job ${jobId} enqueued in ${redisKey}`)
+      const timestamp = Date.now()
+      const score = (10 - priority) * 10000000000000 + timestamp
+
+      // ZADD adds the job ID to the sorted set
+      await redisClient.zAdd(redisKey, {
+        score,
+        value: jobId.toString()
+      })
+
+      console.log(`📡 Job ${jobId} enqueued in ${redisKey} with priority ${priority} (score: ${score})`)
     } catch (error) {
       console.error(`❌ Failed to enqueue job ${jobId}:`, error)
       throw error
@@ -22,20 +32,18 @@ export const queueService = {
   },
 
   /**
-   * Removes a job ID from a specific Redis list.
+   * Removes a job ID from a specific Redis Sorted Set.
    * @param queueName The name of the queue
    * @param jobId The ID of the job
    */
   async removeFromQueue(queueName: string, jobId: string | number): Promise<void> {
     try {
       const redisKey = `queue:${queueName}`
-      // LREM key count value: removes first 'count' occurrences of 'value'
-      // 1 means remove one occurrence starting from head
-      await redisClient.lRem(redisKey, 1, jobId.toString())
+      // ZREM removes the member from the sorted set
+      await redisClient.zRem(redisKey, jobId.toString())
       console.log(`🗑️ Job ${jobId} removed from ${redisKey}`)
     } catch (error) {
       console.error(`❌ Failed to remove job ${jobId} from ${queueName}:`, error)
-      // Usually non-critical, but worth logging
     }
   }
 }

@@ -57,7 +57,7 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
     const isImmediate = !run_at || new Date(run_at) <= new Date()
 
     if (isImmediate) {
-      await queueService.enqueueJob(queue_name, newJob.id)
+      await queueService.enqueueJob(queue_name, newJob.id, priority)
     }
 
     res.status(201).json({
@@ -173,16 +173,17 @@ export const updateJob = async (req: Request, res: Response, next: NextFunction)
     // If it was pending, and metadata changed, we might need to move it in Redis
     if (oldJob.status === 'pending') {
       const queueChanged = updatedJob.queue_name !== oldJob.queue_name || updatedJob.job_type !== oldJob.job_type
+      const priorityChanged = updatedJob.priority !== Number(oldJob.priority)
       const runAtChanged = updatedJob.run_at !== oldJob.run_at
 
-      if (queueChanged || runAtChanged) {
+      if (queueChanged || priorityChanged || runAtChanged) {
         // Remove from old queue
         await queueService.removeFromQueue(oldJob.queue_name, id)
 
         // Enqueue in new queue if it's still pending and immediate
         const isImmediate = updatedJob.status === 'pending' && (!updatedJob.run_at || new Date(updatedJob.run_at) <= new Date())
         if (isImmediate) {
-          await queueService.enqueueJob(updatedJob.queue_name, id)
+          await queueService.enqueueJob(updatedJob.queue_name, id, updatedJob.priority)
         }
       }
     }
