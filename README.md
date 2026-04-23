@@ -10,8 +10,8 @@ The easiest way to run Pulsar is using Docker Compose.
 # 1. Copy environment variables
 cp .env.example .env.development
 
-# 2. Start the stack
-docker-compose up --build
+# 2. Start the stack (Server + Worker)
+docker compose up -d --build
 ```
 
 The server will be available at `http://localhost:3000`.
@@ -31,6 +31,7 @@ The server will be available at `http://localhost:3000`.
 - [Architecture Overview](./docs/architecture.md) - Understand how the code is structured.
 - [API Reference](./docs/api_reference.md) - Details on available endpoints.
 - [Database Schema](./docs/database_schema.md) - ERD and table descriptions.
+- [Worker Module](./docs/worker_module.md) - Details on how background jobs are processed.
 - [Development Workflow](./docs/development.md) - Migration guides and local setup.
 
 ## 📜 Key Features
@@ -39,3 +40,4 @@ The server will be available at `http://localhost:3000`.
 - **Dynamic Queue Routing**: Jobs are automatically routed to specific queues based on their type.
 - **Hot Reloading**: Docker environment supports real-time code syncing for fast development.
 - **Graceful Shutdown**: Handles SIGINT/SIGTERM to close DB and Redis connections cleanly.
+- **Priority-Based Worker**: Dedicated worker process that handles jobs based on priority scores using Redis Sorted Sets.

@@ -10,7 +10,7 @@ const envPath = path.resolve(process.cwd(), `.env.${nodeEnv}`)
 if (fs.existsSync(envPath)) {
   dotenv.config({ path: envPath })
 } else if (nodeEnv !== 'production') {
-  console.warn(`⚠️  Environment file not found at ${envPath}. Using existing process environment.`)
+  console.warn(`⚠️ Environment file not found at ${envPath}. Using existing process environment.`)
 }
 
 const envSchema = z.object({

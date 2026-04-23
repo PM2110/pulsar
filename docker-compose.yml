@@ -5,6 +5,9 @@ services:
       - .env.${NODE_ENV:-development}
     ports:
       - "${PORT:-3000}:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
     depends_on:
       db:
         condition: service_healthy
@@ -25,9 +28,30 @@ services:
       retries: 3
       start_period: 40s
 
+  worker:
+    build: .
+    command: node dist/worker.js
+    env_file:
+      - .env.${NODE_ENV:-development}
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: '0.25'
+          memory: 256M
+
   db:
     image: postgres:16-alpine
     restart: always
+    ports:
+      - "5432:5432"
     env_file:
       - .env.${NODE_ENV:-development}
     volumes:
@@ -45,6 +69,8 @@ services:
   redis:
     image: redis:7-alpine
     restart: always
+    ports:
+      - "6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
