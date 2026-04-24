@@ -9,6 +9,7 @@
     "build": "tsc",
     "start": "node dist/server.js",
     "db:migrate": "pnpm exec tsx src/db/migrate.ts",
+    "worker": "pnpm exec tsx watch src/worker.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

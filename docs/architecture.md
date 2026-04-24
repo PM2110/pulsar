@@ -11,9 +11,11 @@ src/
 ├── db/           # Migrations and SQL schemas
 ├── middlewares/  # Express middlewares (Error handling, etc.)
 ├── routes/       # API Route definitions
+├── services/     # Business logic (Queue, Worker)
 ├── types/        # Zod validation schemas and TS interfaces
 ├── app.ts        # Express app initialization
-└── server.ts     # Server entry point & lifecycle management
+├── server.ts     # Server entry point
+└── worker.ts     # Worker entry point
 ```
 
 ## Core Components
@@ -32,7 +34,8 @@ We use a simple SQL-based migration system. On startup, `server.ts` calls `runMi
 
 ### 4. Background Job Logic
 - **Job Creation**: Jobs are created with a `pending` status. 
-- **Queue Mapping**: In `job.controller.ts`, we determine the `queue_name` using the `QUEUE_MAP` defined in `src/config/queue.config.ts`. This allows the API to automatically categorize jobs without requiring the client to know the queue structure.
+- **Queue Mapping**: In `job.controller.ts`, we determine the `queue_name` using the `QUEUE_MAP`.
+- **Worker Execution**: The **Worker Module** (`src/worker.ts`) polls Redis for pending jobs, simulates execution, and marks them as `completed` in the database.
 
 ## Deployment Model
 The application is fully Dockerized using a multi-stage `Dockerfile`:
