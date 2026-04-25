@@ -33,6 +33,8 @@ Creates a new background job.
 | `priority` | `number` | No | Default: `0`. Higher is more urgent. |
 | `max_attempts`| `number` | No | Default: `3`. |
 | `run_at` | `ISO Date`| No | When the job should be processed. |
+| `failure_mode`| `string` | No | `succeed`, `fail`, or `probably_fail`. Default: `probably_fail` |
+| `fail_probability`| `number` | No | (0.0 to 1.0). Used if mode is `probably_fail`. Default: `0.3` |
 
 **Example Request:**
 ```json

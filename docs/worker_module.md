@@ -17,10 +17,21 @@ Jobs are stored in Redis **Sorted Sets**. The priority is handled by the `score`
 ### 3. Job Lifecycle
 When a worker picks up a job:
 1. **Status Update**: The job status in PostgreSQL is updated from `pending` to `processing`.
-2. **Execution**: The worker performs the task logic. (Current version uses a simulated 2-second delay).
-3. **Completion**: 
-   - On success: Status is updated to `completed`.
-   - On failure: Status is updated to `failed`.
+2. **Execution Simulation**: The worker performs the task logic. (Current version uses a simulated 5-second delay).
+3. **Outcome Control**: The worker checks the job's `failure_mode`:
+   - `succeed`: Always succeeds.
+   - `fail`: Always fails.
+   - `probably_fail`: Fails based on `fail_probability` (default: 0.3).
+4. **Completion/Retry**: 
+   - **On Success**: Status updated to `completed`.
+   - **On Failure**: 
+     - If `attempts < max_attempts`: Status remains `pending`, and an **Exponential Backoff** is calculated (`5s * 2^(attempts-1)`). The job's `run_at` is updated in the DB, and it is added to the **Redis Delayed Queue**.
+     - If no attempts left: Status updated to `failed`.
+
+### 4. Scheduler & Delayed Queue
+To prevent queue starvation from failing jobs, Pulsar uses a two-stage queueing system:
+- **Redis Delayed Queue**: Jobs waiting for their `run_at` time are stored in `delayed:queue:<name>`.
+- **Scheduler**: A background process in the worker monitors the delayed set. When a job is due, it promotes it to the main Priority Queue. It uses "smart sleep" logic to minimize latency by waking up exactly when the next job is due.
 
 ## 🚀 Running the Worker
 

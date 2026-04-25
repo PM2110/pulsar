@@ -64,6 +64,10 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
 
     if (isImmediate) {
       await queueService.enqueueJob(queue_name, newJob.id, priority)
+    } else {
+      // Schedule in Redis delayed queue
+      const runAtDate = new Date(run_at)
+      await queueService.enqueueDelayedJob(queue_name, newJob.id, priority, runAtDate.getTime())
     }
 
     res.status(201).json({

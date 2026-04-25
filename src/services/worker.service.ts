@@ -10,12 +10,15 @@ export const workerService = {
   isRunning: false,
 
   /**
-   * Starts the worker loop.
+   * Starts the worker loop and the scheduler.
    */
   async start(queueName: string = DEFAULT_QUEUE) {
     if (this.isRunning) return
     this.isRunning = true
     console.log(`🚀 Worker started polling queue: ${queueName}`)
+
+    // Start scheduler in background
+    this.startScheduler()
 
     while (this.isRunning) {
       try {
@@ -23,6 +26,32 @@ export const workerService = {
       } catch (error) {
         console.error('❌ Worker loop error:', error)
         // Wait a bit before retrying on error
+        await new Promise(resolve => setTimeout(resolve, 5000))
+      }
+    }
+  },
+
+  /**
+   * Periodically checks Redis delayed queue for jobs that are due and promotes them.
+   */
+  async startScheduler(queueName: string = DEFAULT_QUEUE) {
+    console.log(`⏰ Redis Scheduler started for queue: ${queueName}`)
+    
+    while (this.isRunning) {
+      try {
+        // Promote ready jobs and get wait time until next job
+        const nextWait = await queueService.promoteDelayedJobs(queueName)
+        
+        // Smart sleep: if a job is due soon, wait for it, otherwise default to 5s
+        const sleepTime = nextWait !== null ? Math.min(5000, nextWait) : 5000
+        
+        if (nextWait !== null && nextWait < 5000) {
+          console.log(`💤 Next job due in ${nextWait}ms. Sleeping...`)
+        }
+
+        await new Promise(resolve => setTimeout(resolve, sleepTime))
+      } catch (error) {
+        console.error('❌ Scheduler error:', error)
         await new Promise(resolve => setTimeout(resolve, 5000))
       }
     }
@@ -37,19 +66,23 @@ export const workerService = {
   },
 
   /**
+   * Calculates exponential backoff delay: 5s * 2^(attempts-1)
+   */
+  calculateBackoff(attempts: number): number {
+    const baseDelay = 5000 // 5 seconds
+    return baseDelay * Math.pow(2, attempts - 1)
+  },
+
+  /**
    * Polls Redis for a job using blocking pop and processes it if found.
    */
   async pollAndProcess(queueName: string) {
     const redisKey = `queue:${queueName}`
 
     // bzPopMin blocks until an element is available or timeout (5s)
-    // Returns { key: '...', value: 'jobId', score: 123 } or null
     const result = await redisClient.bzPopMin(redisKey, 5)
 
-    if (!result) {
-      // Timeout occurred, just return to loop and check isRunning
-      return
-    }
+    if (!result) return
 
     const jobId = result.value
     console.log(`📦 Picked up job ${jobId} from ${queueName}`)
@@ -100,8 +133,8 @@ export const workerService = {
         throw new Error('SIMULATED_FAILURE: Custom processing error occurred.')
       }
 
-      // Perform fake task for 2 seconds
-      await new Promise(resolve => setTimeout(resolve, 2000))
+      // Perform fake task for 5 seconds (as requested by user)
+      await new Promise(resolve => setTimeout(resolve, 5000))
 
       // Mark as complete
       await query(
@@ -123,16 +156,27 @@ export const workerService = {
       if (job) {
         const canRetry = job.attempts < job.max_attempts
         const newStatus = canRetry ? 'pending' : 'failed'
+        
+        let nextRunAt: Date | null = null
+        if (canRetry) {
+          const delay = this.calculateBackoff(job.attempts)
+          nextRunAt = new Date(Date.now() + delay)
+          console.log(`🔄 Job ${jobId} failed. Retrying in ${delay / 1000}s (at ${nextRunAt.toISOString()})`)
+          
+          // Add to Redis delayed queue
+          await queueService.enqueueDelayedJob(queueName, jobId, job.priority, nextRunAt.getTime())
+        }
 
-        // Update job status
+        // Update job status in DB
         await query(
           `UPDATE jobs 
            SET status = $1, 
                last_error = $2, 
                updated_at = NOW(), 
-               failed_at = $3
-           WHERE id = $4`,
-          [newStatus, errorMessage, canRetry ? null : new Date(), jobId]
+               failed_at = $3,
+               run_at = COALESCE($4, run_at)
+           WHERE id = $5`,
+          [newStatus, errorMessage, canRetry ? null : new Date(), nextRunAt, jobId]
         )
 
         // Update attempt log
@@ -143,10 +187,7 @@ export const workerService = {
           )
         }
 
-        if (canRetry) {
-          console.log(`🔄 Requeuing job ${jobId} (Attempt ${job.attempts} failed, will retry)`)
-          await queueService.enqueueJob(queueName, jobId, job.priority)
-        } else {
+        if (!canRetry) {
           console.log(`💀 Job ${jobId} failed after ${job.attempts} attempts.`)
         }
       }
