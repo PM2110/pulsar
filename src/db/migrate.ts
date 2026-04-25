@@ -7,16 +7,29 @@ const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
 async function migrate() {
-  const migrationFile = path.join(__dirname, 'migrations', '001_initial_schema.sql')
+  const migrationsDir = path.join(__dirname, 'migrations')
   
   try {
     console.log('🚀 Starting database migration...')
     
-    const sql = await fs.readFile(migrationFile, 'utf8')
+    // Read all files in migrations directory
+    const files = await fs.readdir(migrationsDir)
     
-    await pool.query(sql)
+    // Filter for .sql files and sort them
+    const sqlFiles = files
+      .filter(f => f.endsWith('.sql'))
+      .sort()
+
+    console.log(`📂 Found ${sqlFiles.length} migration files.`)
+
+    for (const file of sqlFiles) {
+      console.log(`📄 Executing migration: ${file}`)
+      const filePath = path.join(migrationsDir, file)
+      const sql = await fs.readFile(filePath, 'utf8')
+      await pool.query(sql)
+    }
     
-    console.log('✅ Migration completed successfully!')
+    console.log('✅ All migrations completed successfully!')
   } catch (error) {
     console.error('❌ Migration failed:', error)
     process.exit(1)

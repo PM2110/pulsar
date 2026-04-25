@@ -25,6 +25,8 @@ Stores the metadata and status of every background task.
 | `updated_at` | `TIMESTAMP` | `NOW()` | Last update time |
 | `completed_at`| `TIMESTAMP` | | When the job finished successfully |
 | `failed_at` | `TIMESTAMP` | | When the job exceeded max attempts |
+| `failure_mode` | `VARCHAR` | `'probably_fail'`| `succeed`, `fail`, `probably_fail` |
+| `fail_probability`| `FLOAT` | `0.3` | Custom failure rate for testing/demo |
 
 ### `job_attempts`
 Records the history of every execution attempt for a job.

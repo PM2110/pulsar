@@ -20,19 +20,20 @@ If you prefer to run services outside of Docker:
    ```
 
 ## Database Migrations
-Migrations are automatically run on app startup (see `src/server.ts`). 
-To manually trigger a migration:
+Pulsar uses a file-based migration runner.
+To add a new migration:
+1. Create a new SQL file in `src/db/migrations/` (e.g., `002_add_columns.sql`).
+2. The runner in `src/db/migrate.ts` will automatically detect and run all `.sql` files in alphanumeric order.
+
+To run migrations:
 ```bash
 pnpm db:migrate
 ```
 
-To add a new migration:
-1. Create a new SQL file in `src/db/migrations/`.
-2. Update `src/db/migrate.ts` to include the new file in the execution sequence.
-
 ## 🐳 Docker Tips
-- **Rebuilding**: If you modify `.ts` files and want them to reflect in the Docker containers, you must run `pnpm build` on the host (since containers use the `dist/` volume) or run `docker compose up -d --build`.
-- **Logs**: View worker logs with `docker logs pulsar-worker-1 -f`.
+- **Code Sync**: The project uses volumes for hot-reloading. However, the **Worker** service runs compiled code from the `dist/` folder. 
+- **Important**: After making changes to TypeScript files, you must run `pnpm build` on your host machine to update the `dist/` folder so the worker container sees the changes.
+- **Restarting**: If you change `.env` files or want to force a refresh: `docker compose up -d`.
 
 ## Code Standards
 - **Validation**: Always use Zod schemas in `src/types/` for input validation.
