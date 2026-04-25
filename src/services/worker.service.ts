@@ -1,3 +1,4 @@
+import os from 'os'
 import { redisClient } from '../config/redis.config.js'
 import { query } from '../config/db.config.js'
 import { DEFAULT_QUEUE } from '../config/queue.config.js'
@@ -18,7 +19,7 @@ export const workerService = {
     console.log(`🚀 Worker started polling queue: ${queueName}`)
 
     // Start scheduler in background
-    this.startScheduler()
+    this.startScheduler(queueName)
 
     while (this.isRunning) {
       try {
@@ -111,9 +112,18 @@ export const workerService = {
 
       // Log attempt start in job_attempts
       const attemptResult = await query(
-        `INSERT INTO job_attempts (job_id, attempt_number, status, worker_id, started_at)
-         VALUES ($1, $2, 'processing', $3, NOW()) RETURNING id`,
-        [jobId, job.attempts, 'worker-1']
+        `INSERT INTO job_attempts (
+          job_id, 
+          attempt_number, 
+          status, 
+          worker_id, 
+          started_at, 
+          scheduled_at, 
+          worker_hostname, 
+          worker_pid
+        )
+         VALUES ($1, $2, 'processing', $3, NOW(), $4, $5, $6) RETURNING id`,
+        [jobId, job.attempts, 'worker-1', job.run_at, os.hostname(), process.pid]
       )
       attemptId = attemptResult.rows[0].id
 
@@ -182,8 +192,8 @@ export const workerService = {
         // Update attempt log
         if (attemptId) {
           await query(
-            'UPDATE job_attempts SET status = \'failed\', error = $1, finished_at = NOW() WHERE id = $2',
-            [errorMessage, attemptId]
+            'UPDATE job_attempts SET status = \'failed\', error = $1, stack_trace = $2, finished_at = NOW() WHERE id = $3',
+            [errorMessage, error.stack || null, attemptId]
           )
         }
 
