@@ -84,10 +84,20 @@ export const workerService = {
       )
       attemptId = attemptResult.rows[0].id
 
-      // Simulate random failure (30% chance)
-      const shouldFail = Math.random() < 0.3
+      // Determine if the job should fail (custom logic for demo/debugging)
+      let shouldFail = false
+      if (job.failure_mode === 'fail') {
+        shouldFail = true
+      } else if (job.failure_mode === 'succeed') {
+        shouldFail = false
+      } else {
+        // Default to probably_fail behavior
+        const prob = job.fail_probability !== null && job.fail_probability !== undefined ? job.fail_probability : 0.3
+        shouldFail = Math.random() < prob
+      }
+
       if (shouldFail) {
-        throw new Error('SIMULATED_FAILURE: Random processing error occurred.')
+        throw new Error('SIMULATED_FAILURE: Custom processing error occurred.')
       }
 
       // Perform fake task for 2 seconds

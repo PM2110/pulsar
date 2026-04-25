@@ -19,7 +19,9 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
       payload,
       priority,
       max_attempts,
-      run_at
+      run_at,
+      failure_mode,
+      fail_probability
     } = validatedData
 
     // Derive queue_name from map if not explicitly provided
@@ -34,9 +36,11 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
         status, 
         priority, 
         max_attempts, 
-        run_at
+        run_at,
+        failure_mode,
+        fail_probability
       ) 
-      VALUES ($1, $2, $3, 'pending', $4, $5, COALESCE($6, NOW()))
+      VALUES ($1, $2, $3, 'pending', $4, $5, COALESCE($6, NOW()), $7, $8)
       RETURNING *
     `
 
@@ -46,7 +50,9 @@ export const createJob = async (req: Request, res: Response, next: NextFunction)
       JSON.stringify(payload),
       priority,
       max_attempts,
-      run_at || null
+      run_at || null,
+      failure_mode,
+      fail_probability
     ]
 
     const result = await query(insertQuery, values)
