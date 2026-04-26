@@ -15,10 +15,10 @@ export const queueService = {
   /**
    * Enqueues a job ID into a specific Redis Sorted Set with priority.
    */
-  async enqueueJob(queueName: string, jobId: string | number, priority: number = 0): Promise<void> {
+  async enqueueJob(queueName: string, jobId: string | number, priority: number = 0, scoreTimestamp?: number): Promise<void> {
     try {
       const redisKey = `queue:${queueName}`
-      const timestamp = Date.now()
+      const timestamp = scoreTimestamp || Date.now()
       const score = (10 - priority) * 10000000000000 + timestamp
 
       await redisClient.zAdd(redisKey, {
@@ -26,7 +26,7 @@ export const queueService = {
         value: jobId.toString()
       })
 
-      console.log(`📡 Job ${jobId} enqueued in ${redisKey} (Score: ${score})`)
+      console.log(`📡 Job ${jobId} enqueued in ${redisKey} (Score: ${score}, BaseTime: ${timestamp})`)
     } catch (error) {
       console.error(`❌ Failed to enqueue job ${jobId}:`, error)
       throw error
@@ -64,21 +64,22 @@ export const queueService = {
       const delayedKey = `delayed:queue:${queueName}`
       const now = Date.now()
 
-      // 1. Get all jobs that are ready to be promoted
-      const readyJobs = await redisClient.zRangeByScore(delayedKey, '-inf', now)
+      // 1. Get all jobs that are ready to be promoted (with their scheduled scores)
+      const readyJobs = await redisClient.zRangeByScoreWithScores(delayedKey, '-inf', now)
 
       if (readyJobs.length > 0) {
-        console.log(`🚀 Promoting ${readyJobs.length} jobs from ${delayedKey} to main queue`)
-        
-        for (const val of readyJobs) {
-          const [jobId, priorityStr] = val.split(':')
-          const priority = parseInt(priorityStr, 10)
+        for (const { value: val, score: originalRunAt } of readyJobs) {
+          // Atomically remove from delayed queue to "claim" the job for promotion
+          const removed = await redisClient.zRem(delayedKey, val)
           
-          // Move to main queue
-          await this.enqueueJob(queueName, jobId, priority)
-          
-          // Remove from delayed queue
-          await redisClient.zRem(delayedKey, val)
+          if (removed === 1) {
+            const [jobId, priorityStr] = val.split(':')
+            const priority = parseInt(priorityStr, 10)
+            
+            console.log(`🚀 Promoting job ${jobId} (scheduled for ${new Date(originalRunAt).toISOString()})`)
+            // Move to main queue using its original scheduled time for ranking
+            await this.enqueueJob(queueName, jobId, priority, originalRunAt)
+          }
         }
       }
 

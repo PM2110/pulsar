@@ -11,48 +11,19 @@ export const workerService = {
   isRunning: false,
 
   /**
-   * Starts the worker loop and the scheduler.
+   * Starts the worker loop.
    */
-  async start(queueName: string = DEFAULT_QUEUE) {
+  async start(queueName: string = DEFAULT_QUEUE, workerId: string = 'worker-1') {
     if (this.isRunning) return
     this.isRunning = true
     console.log(`🚀 Worker started polling queue: ${queueName}`)
 
-    // Start scheduler in background
-    this.startScheduler(queueName)
-
     while (this.isRunning) {
       try {
-        await this.pollAndProcess(queueName)
+        await this.pollAndProcess(queueName, workerId)
       } catch (error) {
         console.error('❌ Worker loop error:', error)
         // Wait a bit before retrying on error
-        await new Promise(resolve => setTimeout(resolve, 5000))
-      }
-    }
-  },
-
-  /**
-   * Periodically checks Redis delayed queue for jobs that are due and promotes them.
-   */
-  async startScheduler(queueName: string = DEFAULT_QUEUE) {
-    console.log(`⏰ Redis Scheduler started for queue: ${queueName}`)
-    
-    while (this.isRunning) {
-      try {
-        // Promote ready jobs and get wait time until next job
-        const nextWait = await queueService.promoteDelayedJobs(queueName)
-        
-        // Smart sleep: if a job is due soon, wait for it, otherwise default to 5s
-        const sleepTime = nextWait !== null ? Math.min(5000, nextWait) : 5000
-        
-        if (nextWait !== null && nextWait < 5000) {
-          console.log(`💤 Next job due in ${nextWait}ms. Sleeping...`)
-        }
-
-        await new Promise(resolve => setTimeout(resolve, sleepTime))
-      } catch (error) {
-        console.error('❌ Scheduler error:', error)
         await new Promise(resolve => setTimeout(resolve, 5000))
       }
     }
@@ -67,21 +38,24 @@ export const workerService = {
   },
 
   /**
-   * Calculates exponential backoff delay: 5s * 2^(attempts-1)
+   * Calculates exponential backoff delay with random jitter:
+   * (5s * 2^(attempts-1)) + random jitter (0-500ms)
    */
   calculateBackoff(attempts: number): number {
     const baseDelay = 5000 // 5 seconds
-    return baseDelay * Math.pow(2, attempts - 1)
+    const exponentialDelay = baseDelay * Math.pow(2, attempts - 1)
+    const jitter = Math.floor(Math.random() * 500) // 0-500ms jitter
+    return exponentialDelay + jitter
   },
 
   /**
    * Polls Redis for a job using blocking pop and processes it if found.
    */
-  async pollAndProcess(queueName: string) {
+  async pollAndProcess(queueName: string, workerId: string) {
     const redisKey = `queue:${queueName}`
 
-    // bzPopMin blocks until an element is available or timeout (5s)
-    const result = await redisClient.bzPopMin(redisKey, 5)
+    // bzPopMin blocks until an element is available or timeout (1s)
+    const result = await redisClient.bzPopMin(redisKey, 1)
 
     if (!result) return
 
@@ -90,25 +64,51 @@ export const workerService = {
 
     let job: any
     let attemptId: string | number | undefined
+    const startedAt = new Date()
 
     try {
       // Fetch job from DB, increment attempts and update status to 'processing'
+      // Strict Concurrency Control:
+      // 1. Only update if status is 'pending'
+      // 2. Only update if run_at is in the past (prevents early starts)
       const startResult = await query(
         `UPDATE jobs 
          SET status = 'processing', 
              attempts = attempts + 1, 
              updated_at = NOW() 
-         WHERE id = $1 RETURNING *`,
+         WHERE id = $1 
+           AND status = 'pending' 
+           AND run_at <= NOW() 
+         RETURNING *`,
         [jobId]
       )
 
       if (startResult.rows.length === 0) {
-        console.warn(`⚠️ Job ${jobId} found in Redis but not in DB. Skipping.`)
+        // If update failed, check if it was due to an early start
+        const checkResult = await query('SELECT status, run_at, priority FROM jobs WHERE id = $1', [jobId])
+        
+        if (checkResult.rows.length > 0) {
+          const { status, run_at, priority } = checkResult.rows[0]
+          const runAtDate = new Date(run_at)
+          
+          if (status === 'pending' && runAtDate > new Date()) {
+            console.warn(`⏳ Job ${jobId} picked up early (Scheduled for ${run_at}). Re-scheduling in delayed queue.`)
+            await queueService.enqueueDelayedJob(queueName, jobId, priority, runAtDate.getTime())
+          } else {
+            console.warn(`⚠️ Job ${jobId} skipped: Status is '${status}' or already being processed.`)
+          }
+        } else {
+          console.warn(`⚠️ Job ${jobId} found in Redis but not in DB. Skipping.`)
+        }
         return
       }
 
       job = startResult.rows[0]
       console.log(`⚙️ Processing job ${jobId} (Type: ${job.job_type}, Attempt: ${job.attempts}/${job.max_attempts})`)
+
+      // Calculate Latency
+      const scheduledAt = new Date(job.run_at)
+      const queueLatencyMs = startedAt.getTime() - scheduledAt.getTime()
 
       // Log attempt start in job_attempts
       const attemptResult = await query(
@@ -120,21 +120,21 @@ export const workerService = {
           started_at, 
           scheduled_at, 
           worker_hostname, 
-          worker_pid
+          worker_pid,
+          queue_latency_ms
         )
-         VALUES ($1, $2, 'processing', $3, NOW(), $4, $5, $6) RETURNING id`,
-        [jobId, job.attempts, 'worker-1', job.run_at, os.hostname(), process.pid]
+         VALUES ($1, $2, 'processing', $3, $4, $5, $6, $7, $8) RETURNING id`,
+        [jobId, job.attempts, workerId, startedAt, scheduledAt, os.hostname(), process.pid, queueLatencyMs]
       )
       attemptId = attemptResult.rows[0].id
 
-      // Determine if the job should fail (custom logic for demo/debugging)
+      // Determine if the job should fail
       let shouldFail = false
       if (job.failure_mode === 'fail') {
         shouldFail = true
       } else if (job.failure_mode === 'succeed') {
         shouldFail = false
       } else {
-        // Default to probably_fail behavior
         const prob = job.fail_probability !== null && job.fail_probability !== undefined ? job.fail_probability : 0.3
         shouldFail = Math.random() < prob
       }
@@ -143,8 +143,12 @@ export const workerService = {
         throw new Error('SIMULATED_FAILURE: Custom processing error occurred.')
       }
 
-      // Perform fake task for 5 seconds (as requested by user)
-      await new Promise(resolve => setTimeout(resolve, 5000))
+      // Success: small random delay (0-500ms)
+      const successDelay = Math.floor(Math.random() * 500)
+      await new Promise(resolve => setTimeout(resolve, successDelay))
+
+      const finishedAt = new Date()
+      const executionTimeMs = finishedAt.getTime() - startedAt.getTime()
 
       // Mark as complete
       await query(
@@ -154,13 +158,15 @@ export const workerService = {
 
       // Update attempt log
       await query(
-        'UPDATE job_attempts SET status = \'completed\', finished_at = NOW() WHERE id = $1',
-        [attemptId]
+        'UPDATE job_attempts SET status = \'completed\', finished_at = $1, execution_time_ms = $2 WHERE id = $3',
+        [finishedAt, executionTimeMs, attemptId]
       )
 
-      console.log(`✅ Job ${jobId} completed successfully`)
+      console.log(`✅ Job ${jobId} completed successfully (Execution: ${executionTimeMs}ms, Latency: ${queueLatencyMs}ms)`)
     } catch (error: any) {
       console.error(`❌ Failed to process job ${jobId}:`, error.message)
+      const finishedAt = new Date()
+      const executionTimeMs = finishedAt.getTime() - startedAt.getTime()
       const errorMessage = error.message || 'Unknown error'
 
       if (job) {
@@ -192,8 +198,14 @@ export const workerService = {
         // Update attempt log
         if (attemptId) {
           await query(
-            'UPDATE job_attempts SET status = \'failed\', error = $1, stack_trace = $2, finished_at = NOW() WHERE id = $3',
-            [errorMessage, error.stack || null, attemptId]
+            `UPDATE job_attempts 
+             SET status = 'failed', 
+                 error = $1, 
+                 stack_trace = $2, 
+                 finished_at = $3,
+                 execution_time_ms = $4
+             WHERE id = $5`,
+            [errorMessage, error.stack || null, finishedAt, executionTimeMs, attemptId]
           )
         }
 
