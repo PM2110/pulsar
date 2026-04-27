@@ -1,0 +1,64 @@
+import axios from 'axios';
+
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+const api = axios.create({
+  baseURL: API_BASE_URL,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+export const apiService = {
+  // Stats
+  getStats: async () => {
+    const response = await api.get('/api/stats');
+    return response.data;
+  },
+
+  // Workers
+  getWorkers: async () => {
+    const response = await api.get('/api/workers');
+    return response.data;
+  },
+  startWorker: async (workerData: { queue_name: string; worker_id: string }) => {
+    const response = await api.post('/api/workers/start', workerData);
+    return response.data;
+  },
+  stopWorker: async (worker_id: string) => {
+    const response = await api.post('/api/workers/stop', { worker_id });
+    return response.data;
+  },
+
+  // Jobs
+  getJobs: async (params: any) => {
+    const response = await api.get('/api/jobs', { params });
+    return response.data;
+  },
+  getJobDetails: async (id: string) => {
+    const response = await api.get(`/api/jobs/${id}`);
+    return response.data;
+  },
+  createJob: async (jobData: any) => {
+    const response = await api.post('/api/jobs', jobData);
+    return response.data;
+  },
+  deleteJob: async (id: string) => {
+    const response = await api.delete(`/api/jobs/${id}`);
+    return response.data;
+  },
+
+  // Seed
+  seedJobs: async (seedData: any) => {
+    const response = await api.post('/api/seed', seedData);
+    return response.data;
+  },
+
+  // Base URL for SSE
+  getAbsoluteUrl: (path: string) => {
+    const cleanPath = path.startsWith('/') ? path : `/${path}`;
+    return `${API_BASE_URL}${cleanPath}`;
+  }
+};
+
+export default apiService;
