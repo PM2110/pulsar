@@ -10,15 +10,30 @@ async function start() {
     // Connect to external services
     await connectRedis()
 
-    // Start the worker loop
-    // You can pass a specific queue name here if needed
-    workerService.start("notifications")
+    // Start the appropriate service(s)
+    const processType = env.PROCESS_TYPE
+    
+    if (processType === 'scheduler' || processType === 'both') {
+      const { schedulerService } = await import('./services/scheduler.service.js')
+      schedulerService.start(env.QUEUE_NAME)
+    }
+
+    if (processType === 'worker' || processType === 'both') {
+      workerService.start(env.QUEUE_NAME, env.WORKER_ID)
+    }
 
     // Graceful Shutdown
     const shutdown = async (signal: string) => {
-      console.log(`\nReceived ${signal}, shutting down worker gracefully...`)
+      console.log(`\nReceived ${signal}, shutting down gracefully...`)
 
-      workerService.stop()
+      if (processType === 'worker' || processType === 'both') {
+        workerService.stop()
+      }
+      
+      if (processType === 'scheduler' || processType === 'both') {
+        const { schedulerService } = await import('./services/scheduler.service.js')
+        schedulerService.stop()
+      }
 
       // Close database pool
       await pool.end()

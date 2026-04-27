@@ -28,11 +28,14 @@ services:
       retries: 3
       start_period: 40s
 
-  worker:
+  worker-notifications:
     build: .
     command: node dist/worker.js
     env_file:
       - .env.${NODE_ENV:-development}
+    environment:
+      - QUEUE_NAME=notifications
+      - WORKER_ID=notifications-worker
     volumes:
       - .:/app
       - /app/node_modules
@@ -42,10 +45,34 @@ services:
       redis:
         condition: service_healthy
     deploy:
+      replicas: 2
       resources:
         limits:
           cpus: '0.25'
           memory: 256M
+
+  worker-media:
+    build: .
+    command: node dist/worker.js
+    env_file:
+      - .env.${NODE_ENV:-development}
+    environment:
+      - QUEUE_NAME=media
+      - WORKER_ID=media-worker
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          cpus: '0.50'
+          memory: 512M
 
   db:
     image: postgres:16-alpine

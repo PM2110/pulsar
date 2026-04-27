@@ -12,6 +12,12 @@ cp .env.example .env.development
 
 # 2. Start the stack (Server + Worker)
 docker compose up -d --build
+
+# 3. Run Database Migrations
+docker exec -i pulsar-app-1 pnpm db:migrate
+
+# 4. Seed Test Data (Optional)
+docker exec -i pulsar-app-1 pnpm seed:jobs
 ```
 
 The server will be available at `http://localhost:3000`.

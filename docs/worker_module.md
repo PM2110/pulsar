@@ -48,10 +48,29 @@ pnpm worker
 ```
 *Note: Ensure your `.env.development` points to `localhost` for Redis and DB if running outside Docker.*
 
-## 📈 Scaling
-To handle higher volumes, you can spin up multiple worker instances. Since `BZPOPMIN` is atomic, Redis ensures that each job is picked up by exactly one worker.
+## 🧪 Testing & Simulation
 
-In Docker Compose, you can scale the worker service:
+Pulsar provides tools to simulate complex failure scenarios, ensuring the system can handle errors and retries gracefully.
+
+### Failure Modes
+The worker behavior for a specific job is controlled by the `failure_mode` and `fail_probability` columns:
+
+- **`succeed`**: The job will always process successfully.
+- **`fail`**: The job will always return an error, triggering retries until `max_attempts` is reached, then moving to `failed` status.
+- **`probably_fail`**: The job will fail randomly based on the `fail_probability` (0.0 to 1.0).
+
+### Seeding Test Data
+Use the seeding script to populate the database with a variety of these scenarios:
+
 ```bash
-docker compose up -d --scale worker=3
+# Docker
+docker exec -i pulsar-app-1 pnpm seed:jobs
+
+# Host
+pnpm seed:jobs:dev
 ```
+
+The seeder creates 10 jobs (5 for `notifications`, 5 for `media`) with a mix of high-priority and low-priority items and various failure modes. This is ideal for verifying:
+1. **Priority Ordering**: Observe that high-priority jobs are picked up first.
+2. **Exponential Backoff**: Observe wait times increasing after each failure.
+3. **Dead Letter Handling**: Verify jobs eventually move to `failed` after exhausting retries.

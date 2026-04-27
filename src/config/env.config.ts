@@ -20,7 +20,10 @@ const envSchema = z.object({
   REDIS_URL: z.string().url(),
   JWT_SECRET: z.string().min(32),
   REFRESH_TOKEN_SECRET: z.string().min(32),
-  COOKIE_SECRET: z.string().min(32)
+  COOKIE_SECRET: z.string().min(32),
+  QUEUE_NAME: z.string().default('default'),
+  WORKER_ID: z.string().default('worker-1'),
+  PROCESS_TYPE: z.enum(['worker', 'scheduler', 'both']).default('both')
 })
 
 const _env = envSchema.safeParse(process.env)

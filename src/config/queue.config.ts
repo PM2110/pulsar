@@ -5,7 +5,8 @@
 export const QUEUE_MAP: Record<string, string> = {
   email_send: 'notifications',
   invoice_generate: 'billing',
-  image_resize: 'media'
+  image_resize: 'media',
+  video_processing: 'media'
 }
 
 export const DEFAULT_QUEUE = 'default'
