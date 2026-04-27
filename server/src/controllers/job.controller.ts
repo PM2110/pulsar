@@ -244,3 +244,46 @@ export const deleteJob = async (req: Request, res: Response, next: NextFunction)
     next(err)
   }
 }
+
+/**
+ * POST /api/jobs/:id/retry
+ * Manually retries a failed job by resetting its attempts and enqueuing it.
+ */
+export const retryJob = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params.id as string
+
+    // Get job to check status
+    const jobResult = await query('SELECT * FROM jobs WHERE id = $1', [id])
+    if (jobResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Job not found' })
+    }
+    const job = jobResult.rows[0]
+
+    if (job.status !== 'failed') {
+      return res.status(400).json({ error: 'Only failed jobs can be retried' })
+    }
+
+    // Reset job and set it to pending
+    const updateQuery = `
+      UPDATE jobs
+      SET status = 'pending',
+          attempts = 0,
+          last_error = NULL,
+          failed_at = NULL,
+          updated_at = NOW(),
+          run_at = NOW()
+      WHERE id = $1
+      RETURNING *
+    `
+    const updatedResult = await query(updateQuery, [id])
+    const updatedJob = updatedResult.rows[0]
+
+    // Enqueue job immediately
+    await queueService.enqueueJob(updatedJob.queue_name, id, updatedJob.priority)
+
+    res.json({ message: 'Job retried successfully', job: updatedJob })
+  } catch (err) {
+    next(err)
+  }
+}

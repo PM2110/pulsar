@@ -50,6 +50,10 @@ export const apiService = {
     const response = await api.delete(`/api/jobs/${id}`);
     return response.data;
   },
+  retryJob: async (id: string) => {
+    const response = await api.post(`/api/jobs/${id}/retry`);
+    return response.data;
+  },
 
   // Seed
   seedJobs: async (seedData: any) => {
