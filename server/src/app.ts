@@ -9,6 +9,10 @@ import { env } from './config/env.config.js'
 import { errorHandler } from './middlewares/errorHandler.middleware.js'
 import healthRoutes from './routes/health.route.js'
 import jobRoutes from './routes/job.route.js'
+import statsRoutes from './routes/stats.route.js'
+import seedRoutes from './routes/seed.route.js'
+import eventsRoutes from './routes/events.route.js'
+import workerRoutes from './routes/worker.route.js'
 
 const app: Express = express()
 
@@ -51,6 +55,10 @@ app.use(cookieParser(env.COOKIE_SECRET))
 // Routes
 app.use('/health', healthRoutes)
 app.use('/api/jobs', jobRoutes)
+app.use('/api/stats', statsRoutes)
+app.use('/api/seed', seedRoutes)
+app.use('/api/events', eventsRoutes)
+app.use('/api/workers', workerRoutes)
 
 // Error Handler (must be last)
 app.use(errorHandler)

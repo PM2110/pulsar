@@ -3,19 +3,24 @@ import { redisClient } from '../config/redis.config.js'
 import { query } from '../config/db.config.js'
 import { DEFAULT_QUEUE } from '../config/queue.config.js'
 import { queueService } from './queue.service.js'
+import { workerRegistry } from './worker.registry.js'
 
 /**
  * Service to handle worker logic: polling Redis and processing jobs.
  */
+// Track running state per worker instance
+const runningInstances: Map<string, boolean> = new Map()
+
 export const workerService = {
   isRunning: false,
 
   /**
-   * Starts the worker loop.
+   * Starts the singleton worker loop (used by Docker workers).
    */
   async start(queueName: string = DEFAULT_QUEUE, workerId: string = 'worker-1') {
     if (this.isRunning) return
     this.isRunning = true
+    workerRegistry.register(workerId, queueName)
     console.log(`🚀 Worker started polling queue: ${queueName}`)
 
     while (this.isRunning) {
@@ -23,10 +28,38 @@ export const workerService = {
         await this.pollAndProcess(queueName, workerId)
       } catch (error) {
         console.error('❌ Worker loop error:', error)
-        // Wait a bit before retrying on error
         await new Promise(resolve => setTimeout(resolve, 5000))
       }
     }
+    workerRegistry.setStopped(workerId)
+  },
+
+  /**
+   * Starts a named worker instance (used by /api/workers/start).
+   */
+  async startInstance(queueName: string, workerId: string) {
+    runningInstances.set(workerId, true)
+    workerRegistry.register(workerId, queueName)
+    console.log(`🚀 Worker instance '${workerId}' started on queue: ${queueName}`)
+
+    while (runningInstances.get(workerId)) {
+      try {
+        await this.pollAndProcess(queueName, workerId)
+      } catch (error) {
+        console.error(`❌ Worker instance '${workerId}' error:`, error)
+        await new Promise(resolve => setTimeout(resolve, 5000))
+      }
+    }
+    workerRegistry.setStopped(workerId)
+    console.log(`🛑 Worker instance '${workerId}' stopped.`)
+  },
+
+  /**
+   * Stops a named worker instance.
+   */
+  stopInstance(workerId: string) {
+    runningInstances.set(workerId, false)
+    console.log(`🛑 Worker instance '${workerId}' stopping...`)
   },
 
   /**
@@ -106,6 +139,9 @@ export const workerService = {
       job = startResult.rows[0]
       console.log(`⚙️ Processing job ${jobId} (Type: ${job.job_type}, Attempt: ${job.attempts}/${job.max_attempts})`)
 
+      // Update registry
+      workerRegistry.setProcessing(workerId, jobId)
+
       // Calculate Latency
       const scheduledAt = new Date(job.run_at)
       const queueLatencyMs = startedAt.getTime() - scheduledAt.getTime()
@@ -162,6 +198,8 @@ export const workerService = {
         [finishedAt, executionTimeMs, attemptId]
       )
 
+      workerRegistry.incrementProcessed(workerId)
+      workerRegistry.setIdle(workerId)
       console.log(`✅ Job ${jobId} completed successfully (Execution: ${executionTimeMs}ms, Latency: ${queueLatencyMs}ms)`)
     } catch (error: any) {
       console.error(`❌ Failed to process job ${jobId}:`, error.message)
@@ -210,9 +248,11 @@ export const workerService = {
         }
 
         if (!canRetry) {
+          workerRegistry.incrementFailed(workerId)
           console.log(`💀 Job ${jobId} failed after ${job.attempts} attempts.`)
         }
       }
+      workerRegistry.setIdle(workerId)
     }
   }
 }

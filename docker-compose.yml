@@ -1,12 +1,12 @@
 services:
   app:
-    build: .
+    build: ./server
     env_file:
-      - .env.${NODE_ENV:-development}
+      - ./server/.env.${NODE_ENV:-development}
     ports:
       - "${PORT:-3000}:3000"
     volumes:
-      - .:/app
+      - ./server:/app
       - /app/node_modules
     depends_on:
       db:
@@ -29,15 +29,15 @@ services:
       start_period: 40s
 
   worker-notifications:
-    build: .
+    build: ./server
     command: node dist/worker.js
     env_file:
-      - .env.${NODE_ENV:-development}
+      - ./server/.env.${NODE_ENV:-development}
     environment:
       - QUEUE_NAME=notifications
       - WORKER_ID=notifications-worker
     volumes:
-      - .:/app
+      - ./server:/app
       - /app/node_modules
     depends_on:
       db:
@@ -52,15 +52,15 @@ services:
           memory: 256M
 
   worker-media:
-    build: .
+    build: ./server
     command: node dist/worker.js
     env_file:
-      - .env.${NODE_ENV:-development}
+      - ./server/.env.${NODE_ENV:-development}
     environment:
       - QUEUE_NAME=media
       - WORKER_ID=media-worker
     volumes:
-      - .:/app
+      - ./server:/app
       - /app/node_modules
     depends_on:
       db:
@@ -74,13 +74,27 @@ services:
           cpus: '0.50'
           memory: 512M
 
+  client:
+    build: ./client
+    ports:
+      - "3001:3000"
+    volumes:
+      - ./client:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - CHOKIDAR_USEPOLLING=true
+      - WATCHPACK_POLLING=true
+    depends_on:
+      - app
+
   db:
     image: postgres:16-alpine
     restart: always
     ports:
       - "5432:5432"
     env_file:
-      - .env.${NODE_ENV:-development}
+      - ./server/.env.${NODE_ENV:-development}
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:

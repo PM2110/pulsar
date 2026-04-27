@@ -46,5 +46,5 @@
     "forceConsistentCasingInFileNames": true,
     "resolveJsonModule": true,
   },
-  "exclude": ["node_modules", "dist", "scratch"]
+  "exclude": ["node_modules", "dist", "scratch", "ui"]
 }
