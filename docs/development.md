@@ -25,14 +25,32 @@ To add a new migration:
 1. Create a new SQL file in `src/db/migrations/` (e.g., `002_add_columns.sql`).
 2. The runner in `src/db/migrate.ts` will automatically detect and run all `.sql` files in alphanumeric order.
 
-To run migrations:
+### Run on Host (Development)
 ```bash
-pnpm db:migrate
+pnpm db:migrate:dev
+```
+
+### Run inside Docker
+```bash
+docker exec -i pulsar-app-1 pnpm db:migrate
+```
+
+## 🧪 Data Seeding
+Pulsar includes a seeding script to populate the database with realistic test jobs and failure scenarios.
+
+### Run on Host (Development)
+```bash
+pnpm seed:jobs:dev
+```
+
+### Run inside Docker
+```bash
+docker exec -i pulsar-app-1 pnpm seed:jobs
 ```
 
 ## 🐳 Docker Tips
-- **Code Sync**: The project uses volumes for hot-reloading. However, the **Worker** service runs compiled code from the `dist/` folder. 
-- **Important**: After making changes to TypeScript files, you must run `pnpm build` on your host machine to update the `dist/` folder so the worker container sees the changes.
+- **Code Sync**: The project uses volumes for hot-reloading. However, many scripts (like migrations and seeds) run against the compiled `dist/` folder for consistency across environments.
+- **Build First**: After making changes to TypeScript files, you must run `pnpm build` on your host machine. This updates the `dist/` folder and copies non-TS assets (like `.sql` migrations), which are then picked up by Docker.
 - **Restarting**: If you change `.env` files or want to force a refresh: `docker compose up -d`.
 
 ## Code Standards
