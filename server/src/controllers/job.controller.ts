@@ -104,16 +104,29 @@ export const getJobs = async (req: Request, res: Response, next: NextFunction) =
     }
 
     queryText += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`
+
+    // Get total count (without limit/offset)
+    let countQueryText = 'SELECT COUNT(*) as total FROM jobs WHERE 1=1'
+    if (status) {
+      countQueryText += ` AND status = $1`
+    }
+    if (queue_name) {
+      countQueryText += ` AND queue_name = $${status ? 2 : 1}`
+    }
+
     params.push(limit, offset)
 
-    const result = await query(queryText, params)
+    const [result, countResult] = await Promise.all([
+      query(queryText, params),
+      query(countQueryText, params.slice(0, -2))
+    ])
 
     res.json({
       jobs: result.rows,
       meta: {
         limit: Number(limit),
         offset: Number(offset),
-        count: result.rowCount
+        count: parseInt(countResult.rows[0].total, 10)
       }
     })
   } catch (err) {

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { apiService } from "../lib/api.service";
+import { apiService, socket } from "../lib/api.service";
 
 interface Job {
   id: string;
@@ -357,7 +357,20 @@ export default function JobsPage() {
   }, [page, statusFilter, queueFilter]);
 
   useEffect(() => { fetchJobs(); }, [fetchJobs]);
-  useEffect(() => { const t = setInterval(fetchJobs, 3000); return () => clearInterval(t); }, [fetchJobs]);
+
+  useEffect(() => {
+    let timeout: NodeJS.Timeout;
+    const handleJobUpdate = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(fetchJobs, 200); // Debounce updates
+    };
+    
+    socket.on("job_update", handleJobUpdate);
+    return () => {
+      clearTimeout(timeout);
+      socket.off("job_update", handleJobUpdate);
+    };
+  }, [fetchJobs]);
 
   const deleteJob = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -375,7 +388,7 @@ export default function JobsPage() {
             Jobs
           </h1>
           <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            {total} jobs · auto-refreshes every 3s
+            {total} jobs · live refreshing via WebSocket
           </p>
         </div>
         <button className="btn btn-primary" onClick={() => setShowAddDrawer(true)}>

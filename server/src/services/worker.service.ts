@@ -139,6 +139,9 @@ export const workerService = {
       job = startResult.rows[0]
       console.log(`⚙️ Processing job ${jobId} (Type: ${job.job_type}, Attempt: ${job.attempts}/${job.max_attempts})`)
 
+      // Broadcast start using Redis PubSub
+      redisClient.publish('pulsar:events', JSON.stringify({ type: 'job_update', job_id: jobId, status: 'processing' }))
+
       // Update registry
       workerRegistry.setProcessing(workerId, jobId)
 
@@ -175,13 +178,13 @@ export const workerService = {
         shouldFail = Math.random() < prob
       }
 
+      // Simulated Processing Delay: 3-10 Seconds
+      const processingDelay = Math.floor(Math.random() * 7000) + 3000
+      await new Promise(resolve => setTimeout(resolve, processingDelay))
+
       if (shouldFail) {
         throw new Error('SIMULATED_FAILURE: Custom processing error occurred.')
       }
-
-      // Success: small random delay (0-500ms)
-      const successDelay = Math.floor(Math.random() * 500)
-      await new Promise(resolve => setTimeout(resolve, successDelay))
 
       const finishedAt = new Date()
       const executionTimeMs = finishedAt.getTime() - startedAt.getTime()
@@ -201,6 +204,9 @@ export const workerService = {
       workerRegistry.incrementProcessed(workerId)
       workerRegistry.setIdle(workerId)
       console.log(`✅ Job ${jobId} completed successfully (Execution: ${executionTimeMs}ms, Latency: ${queueLatencyMs}ms)`)
+
+      // Broadcast completion
+      redisClient.publish('pulsar:events', JSON.stringify({ type: 'job_update', job_id: jobId, status: 'completed' }))
     } catch (error: any) {
       console.error(`❌ Failed to process job ${jobId}:`, error.message)
       const finishedAt = new Date()
@@ -251,6 +257,9 @@ export const workerService = {
           workerRegistry.incrementFailed(workerId)
           console.log(`💀 Job ${jobId} failed after ${job.attempts} attempts.`)
         }
+
+        // Broadcast failure or retry
+        redisClient.publish('pulsar:events', JSON.stringify({ type: 'job_update', job_id: jobId, status: newStatus, error: errorMessage }))
       }
       workerRegistry.setIdle(workerId)
     }
