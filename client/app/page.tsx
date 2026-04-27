@@ -14,6 +14,9 @@ interface Stats {
   queues: {
     depths: Record<string, number>;
     delayed: Record<string, number>;
+    readyJobs: Record<string, { id: string; runAt: number }[]>;
+    delayedJobs: Record<string, { id: string; runAt: number }[]>;
+    processing: Record<string, { id: string; workerId: string | null; workerHostname: string | null }[]>;
   };
   attempts: {
     total: number;
@@ -95,6 +98,12 @@ export default function DashboardPage() {
   });
   const [seedMsg, setSeedMsg] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
+  // Live clock — ticks every second so all time displays update without refetching
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
   const fetchStats = useCallback(async () => {
     try {
@@ -161,11 +170,11 @@ export default function DashboardPage() {
   const statItems = [
     { label: "Pending", value: stats?.jobs.pending ?? 0, color: "var(--pending)", dot: "pulse-gray" },
     { label: "Processing", value: stats?.jobs.processing ?? 0, color: "var(--processing)", dot: "pulse-white" },
-    { label: "Completed", value: stats?.jobs.completed ?? 0, color: "var(--completed)", dot: "pulse-green" },
-    { label: "Failed", value: stats?.jobs.failed ?? 0, color: "var(--failed)", dot: "pulse-red" },
+    { label: "Completed", value: stats?.jobs.completed ?? 0, color: "#4ade80", dot: "pulse-green" },
+    { label: "Failed", value: stats?.jobs.failed ?? 0, color: "#f87171", dot: "pulse-red" },
   ];
 
-  const maxQueueDepth = Math.max(1, ...QUEUES.map((q) => stats?.queues.depths[q] ?? 0));
+
 
   return (
     <div style={{ padding: "28px 32px", maxWidth: 1200 }}>
@@ -275,44 +284,209 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-        {/* Queue Depths */}
+      {/* Queue Lanes — full width */}
+      <div style={{ marginBottom: 16 }}>
+        {/* Queue Lanes */}
         <div className="card">
           <div className="section-header">
-            <span className="section-title">Queue Depths</span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>Redis sorted sets</span>
+            <span className="section-title">Queue Lanes</span>
+            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>live · pending / processing / delayed</span>
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
             {QUEUES.map((q) => {
               const depth = stats?.queues.depths[q] ?? 0;
               const delayed = stats?.queues.delayed[q] ?? 0;
-              const pct = (depth / maxQueueDepth) * 100;
+              const processingJobs = stats?.queues.processing[q] ?? [];
+              const readyItems = stats?.queues.readyJobs[q] ?? [];
+              const delayedItems = stats?.queues.delayedJobs[q] ?? [];
+
+              const pendingOverflow = Math.max(0, depth - readyItems.length);
+              const delayedOverflow = Math.max(0, delayed - delayedItems.length);
+              const hasAnything = depth > 0 || delayed > 0 || processingJobs.length > 0;
+
+              // Helper: format a short worker label from workerId / hostname
+              const workerLabel = (workerId: string | null, hostname: string | null): string => {
+                if (workerId) {
+                  // e.g. "notifications-worker" -> strip queue prefix -> "worker"
+                  // use last segment after last dash-number or just shorten
+                  return workerId.replace(/-worker$/, '').replace('notifications', 'notif').slice(0, 10);
+                }
+                if (hostname) return hostname.slice(0, 6);
+                return 'worker';
+              };
+
+              // Format wait time for ready jobs (how long they've been in the queue)
+              const waitLabel = (runAt: number): string => {
+                const secs = Math.max(0, Math.round((now - runAt) / 1000));
+                if (secs >= 60) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
+                return `${secs}s`;
+              };
+
+              // Format countdown for delayed jobs
+              const delayLabel = (runAt: number): string => {
+                const secs = Math.max(0, Math.round((runAt - now) / 1000));
+                if (secs >= 60) return `in ${Math.floor(secs / 60)}m ${secs % 60}s`;
+                return `in ${secs}s`;
+              };
               return (
                 <div key={q}>
-                  <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-                    <span style={{ fontSize: 12, color: "var(--text-secondary)", fontFamily: "monospace" }}>
+                  {/* Queue header */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
+                    <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: "var(--text-secondary)" }}>
                       queue:{q}
                     </span>
-                    <div style={{ display: "flex", gap: 8, fontSize: 11 }}>
-                      <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>{depth} ready</span>
-                      {delayed > 0 && (
-                        <span style={{ color: "var(--retrying)" }}>{delayed} delayed</span>
-                      )}
+                    <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+                    <div style={{ display: "flex", gap: 10, fontSize: 11 }}>
+                      {processingJobs.length > 0 && <span style={{ color: "rgba(74,222,128,0.8)" }}>{processingJobs.length} processing</span>}
+                      {depth > 0 && <span style={{ color: "var(--text-muted)" }}>{depth} ready</span>}
+                      {delayed > 0 && <span style={{ color: "rgba(248,113,113,0.85)" }}>{delayed} delayed</span>}
+                      {!hasAnything && <span style={{ color: "var(--text-faint)" }}>idle</span>}
                     </div>
                   </div>
-                  <div className="queue-bar">
-                    <div
-                      className="queue-bar-fill"
-                      style={{ width: `${pct}%`, background: QUEUE_COLORS[q] }}
-                    />
-                  </div>
+
+                  {/* Main queue cells */}
+                  {hasAnything && (
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                      {/* Active + Ready queue */}
+                      {(processingJobs.length > 0 || readyItems.length > 0) && (
+                        <div>
+                          <div style={{ fontSize: 10, color: "var(--text-faint)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Ready Queue</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {/* Processing cells — green with worker label */}
+                            {processingJobs.map((job) => (
+                              <div
+                                key={`proc-${job.id}`}
+                                title={`Processing job #${job.id} · ${job.workerId ?? 'worker'} (${job.workerHostname ?? ''})`}
+                                style={{
+                                  padding: "6px 10px",
+                                  borderRadius: 6,
+                                  background: "rgba(74,222,128,0.08)",
+                                  border: "1px solid rgba(74,222,128,0.3)",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 2,
+                                  minWidth: 80,
+                                  animation: "soft-blink 2s ease-in-out infinite",
+                                }}
+                              >
+                                <span style={{ fontSize: 9, color: "rgba(74,222,128,0.6)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                                  {workerLabel(job.workerId, job.workerHostname)}
+                                </span>
+                                <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 600, color: "rgba(74,222,128,0.9)" }}>#{job.id}</span>
+                              </div>
+                            ))}
+
+                            {/* Ready/Pending cells — neutral with wait time */}
+                            {readyItems.map((item, i) => (
+                              <div
+                                key={`ready-${item.id}-${i}`}
+                                title={`Pending job #${item.id} · waiting since ${new Date(item.runAt).toLocaleTimeString()}`}
+                                style={{
+                                  padding: "6px 10px",
+                                  borderRadius: 6,
+                                  background: "rgba(255,255,255,0.03)",
+                                  border: "1px solid var(--border-strong)",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 2,
+                                  minWidth: 80,
+                                }}
+                              >
+                                <span style={{ fontSize: 9, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.05em" }}>wait {waitLabel(item.runAt)}</span>
+                                <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 600, color: "var(--text-secondary)" }}>#{item.id}</span>
+                              </div>
+                            ))}
+
+                            {/* Overflow badge */}
+                            {pendingOverflow > 0 && (
+                              <div style={{
+                                padding: "6px 10px",
+                                borderRadius: 6,
+                                background: "rgba(255,255,255,0.02)",
+                                border: "1px dashed var(--border)",
+                                display: "flex",
+                                alignItems: "center",
+                                fontSize: 11,
+                                color: "var(--text-faint)",
+                                minWidth: 60,
+                              }}>
+                                +{pendingOverflow} more
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Delayed queue */}
+                      {delayedItems.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 10, color: "var(--text-faint)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Delayed Queue</div>
+                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                            {delayedItems.map((item, i) => (
+                              <div
+                                key={`del-${item.id}-${i}`}
+                                title={`Job #${item.id} — runs at ${new Date(item.runAt).toLocaleTimeString()}`}
+                                style={{
+                                  padding: "6px 10px",
+                                  borderRadius: 6,
+                                  background: "rgba(248,113,113,0.06)",
+                                  border: "1px solid rgba(248,113,113,0.25)",
+                                  display: "flex",
+                                  flexDirection: "column",
+                                  gap: 2,
+                                  minWidth: 80,
+                                }}
+                              >
+                                <span style={{ fontSize: 9, color: "rgba(248,113,113,0.55)", textTransform: "uppercase", letterSpacing: "0.05em" }}>delayed</span>
+                                <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 600, color: "rgba(248,113,113,0.8)" }}>#{item.id}</span>
+                                <span style={{ fontSize: 9, color: "rgba(248,113,113,0.5)" }}>{delayLabel(item.runAt)}</span>
+                              </div>
+                            ))}
+                            {delayedOverflow > 0 && (
+                              <div style={{
+                                padding: "6px 10px",
+                                borderRadius: 6,
+                                background: "rgba(248,113,113,0.03)",
+                                border: "1px dashed rgba(248,113,113,0.2)",
+                                display: "flex",
+                                alignItems: "center",
+                                fontSize: 11,
+                                color: "rgba(248,113,113,0.45)",
+                                minWidth: 60,
+                              }}>
+                                +{delayedOverflow} more
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Empty state */}
+                      {!hasAnything && (
+                        <div style={{
+                          padding: "14px 0",
+                          fontSize: 12,
+                          color: "var(--text-faint)",
+                          fontStyle: "italic",
+                        }}>
+                          No jobs queued
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {!hasAnything && (
+                    <div style={{ fontSize: 12, color: "var(--text-faint)", fontStyle: "italic" }}>No jobs queued</div>
+                  )}
                 </div>
               );
             })}
           </div>
         </div>
+      </div>
 
-        {/* Seed Jobs */}
+      {/* Seed Jobs */}
+      <div style={{ marginBottom: 16, maxWidth: 480 }}>
         <div className="card">
           <div className="section-header">
             <span className="section-title">Seed Jobs</span>

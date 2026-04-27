@@ -103,7 +103,7 @@ export const getJobs = async (req: Request, res: Response, next: NextFunction) =
       queryText += ` AND queue_name = $${params.length}`
     }
 
-    queryText += ` ORDER BY created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`
+    queryText += ` ORDER BY id ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`
 
     // Get total count (without limit/offset)
     let countQueryText = 'SELECT COUNT(*) as total FROM jobs WHERE 1=1'
@@ -268,7 +268,6 @@ export const retryJob = async (req: Request, res: Response, next: NextFunction) 
     const updateQuery = `
       UPDATE jobs
       SET status = 'pending',
-          attempts = 0,
           last_error = NULL,
           failed_at = NULL,
           updated_at = NOW(),
