@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useCallback } from "react";
-import { apiService } from "./lib/api.service";
+import { apiService, socket } from "./lib/api.service";
 
 interface Stats {
   jobs: {
@@ -103,27 +103,41 @@ export default function DashboardPage() {
     } catch { }
   }, []);
 
-  // Poll stats every 3s
+  // Fetch initially, then rely on WebSocket for live updates
   useEffect(() => {
     fetchStats();
-    const t = setInterval(fetchStats, 3000);
-    return () => clearInterval(t);
+    
+    socket.on("stats_update", (data: Stats) => {
+      setStats(data);
+    });
+
+    return () => {
+      socket.off("stats_update");
+    };
   }, [fetchStats]);
 
-  // SSE feed
+  // WebSocket feed
   useEffect(() => {
-    const es = new EventSource(apiService.getAbsoluteUrl("/api/events"));
-    es.onmessage = (e) => {
-      const events: FeedEvent[] = JSON.parse(e.data);
+    const handleJobUpdate = (ev: FeedEvent) => {
+      // Set timestamp dynamically since worker might just pass basic data
+      const eventWithTime: FeedEvent = {
+        ...ev,
+        timestamp: ev.timestamp || new Date().toISOString()
+      };
+      
       setFeed((prev) => {
-        const next = [...events.reverse(), ...prev].slice(0, 60);
+        const next = [eventWithTime, ...prev].slice(0, 60);
         return next;
       });
       setTimeout(() => {
         feedRef.current?.scrollTo({ top: 0, behavior: "smooth" });
       }, 50);
     };
-    return () => es.close();
+
+    socket.on("job_update", handleJobUpdate);
+    return () => {
+      socket.off("job_update", handleJobUpdate);
+    };
   }, []);
 
   const handleSeed = async () => {
@@ -369,7 +383,7 @@ export default function DashboardPage() {
             <span className="section-title">Live Activity Feed</span>
             <div className="pulse-dot pulse-green" style={{ width: 7, height: 7 }} />
           </div>
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>SSE · updates every 1.5s</span>
+          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>WebSocket · real-time updates</span>
         </div>
         <div
           ref={feedRef}

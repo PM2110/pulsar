@@ -1,6 +1,9 @@
 import axios from 'axios';
+import { io } from 'socket.io-client';
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000';
+
+export const socket = io(API_BASE_URL);
 
 const api = axios.create({
   baseURL: API_BASE_URL,
@@ -54,7 +57,7 @@ export const apiService = {
     return response.data;
   },
 
-  // Base URL for SSE
+  // Base URL
   getAbsoluteUrl: (path: string) => {
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
     return `${API_BASE_URL}${cleanPath}`;

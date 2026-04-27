@@ -1,7 +1,10 @@
 import { app } from './app.js'
 import { env } from './config/env.config.js'
-import { connectRedis } from './config/redis.config.js'
+import { connectRedis, redisClient } from './config/redis.config.js'
 import { pool } from './config/db.config.js'
+import { Server as SocketIOServer } from 'socket.io'
+import { createServer } from 'http'
+import { statsService } from './services/stats.service.js'
 
 async function start() {
   const port = parseInt(env.PORT, 10) || 3000
@@ -10,7 +13,41 @@ async function start() {
     // Connect to external services
     await connectRedis()
 
-    const server = app.listen(port, () => {
+    const httpServer = createServer(app)
+    
+    // Attach Socket.IO
+    const io = new SocketIOServer(httpServer, {
+      cors: {
+        origin: env.NODE_ENV === 'production' ? (process.env.ALLOWED_ORIGINS?.split(',') || false) : true,
+        credentials: true
+      }
+    })
+
+    // Setup Redis Event Subscriber
+    const pubSubClient = redisClient.duplicate()
+    await pubSubClient.connect()
+
+    await pubSubClient.subscribe('pulsar:events', async (message) => {
+      try {
+        const eventData = JSON.parse(message)
+        io.emit('job_update', eventData)
+        
+        const stats = await statsService.getStats()
+        io.emit('stats_update', stats)
+      } catch (err) {
+        console.error('Error broadcasting websocket events:', err)
+      }
+    })
+
+    // Client connection logging (Optional)
+    io.on('connection', (socket) => {
+      console.log(`🔌 Client connected: ${socket.id}`)
+      socket.on('disconnect', () => {
+        console.log(`🔌 Client disconnected: ${socket.id}`)
+      })
+    })
+
+    const server = httpServer.listen(port, () => {
       console.log(`🚀 Server listening on port ${port} in ${env.NODE_ENV} mode`)
     })
 

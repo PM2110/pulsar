@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, useCallback } from "react";
-import { apiService } from "../lib/api.service";
+import { apiService, socket } from "../lib/api.service";
 
 interface WorkerInfo {
   worker_id: string;
@@ -152,9 +152,21 @@ export default function WorkersPage() {
   }, []);
 
   useEffect(() => { fetchWorkers(); }, [fetchWorkers]);
+
   useEffect(() => {
-    const t = setInterval(fetchWorkers, 2500);
-    return () => clearInterval(t);
+    let timeout: NodeJS.Timeout;
+    const handleUpdate = () => {
+      clearTimeout(timeout);
+      timeout = setTimeout(fetchWorkers, 500); // Debounce updates
+    };
+    
+    socket.on("job_update", handleUpdate);
+    socket.on("stats_update", handleUpdate);
+    return () => {
+      clearTimeout(timeout);
+      socket.off("job_update", handleUpdate);
+      socket.off("stats_update", handleUpdate);
+    };
   }, [fetchWorkers]);
 
   const handleStart = async () => {
@@ -210,7 +222,7 @@ export default function WorkersPage() {
           Workers
         </h1>
         <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          {activeWorkers.length} active · {stoppedWorkers.length} stopped · refreshes every 2.5s
+          {activeWorkers.length} active · {stoppedWorkers.length} stopped · live refreshing via WebSocket
         </p>
       </div>
 
