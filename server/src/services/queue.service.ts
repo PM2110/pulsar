@@ -12,9 +12,7 @@ export const queueService = {
    * @param jobId The ID of the job from the database
    * @param priority The priority level (higher is more important)
    */
-  /**
-   * Enqueues a job ID into a specific Redis Sorted Set with priority.
-   */
+
   async enqueueJob(queueName: string, jobId: string | number, priority: number = 0, scoreTimestamp?: number): Promise<void> {
     try {
       const redisKey = `queue:${queueName}`

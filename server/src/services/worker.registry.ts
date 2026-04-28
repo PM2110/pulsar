@@ -1,24 +1,18 @@
+import { WorkerInfo } from '../types/worker.types.js'
+
+const workers: Map<string, WorkerInfo> = new Map()
+
 /**
- * In-memory registry that tracks all active worker instances.
- * Workers register themselves here and update their heartbeats.
+ * Tracks the in-memory state and heartbeat of all active Pulsar workers.
  */
-
-export interface WorkerInfo {
-  worker_id: string
-  queue_name: string
-  status: 'idle' | 'processing' | 'stopped'
-  jobs_processed: number
-  jobs_failed: number
-  last_activity: Date
-  started_at: Date
-  current_job_id?: string | null
-}
-
-class WorkerRegistry {
-  private workers: Map<string, WorkerInfo> = new Map()
-
-  register(workerId: string, queueName: string): void {
-    this.workers.set(workerId, {
+export const workerRegistry = {
+  /**
+   * Registers a new worker node in the system.
+   * @param workerId Unique identifier of the worker.
+   * @param queueName The queue this worker is polling.
+   */
+  register: (workerId: string, queueName: string): void => {
+    workers.set(workerId, {
       worker_id: workerId,
       queue_name: queueName,
       status: 'idle',
@@ -28,60 +22,97 @@ class WorkerRegistry {
       started_at: new Date(),
       current_job_id: null
     })
-  }
+  },
 
-  unregister(workerId: string): void {
-    this.workers.delete(workerId)
-  }
+  /**
+   * Completely removes a worker from the tracked registry.
+   * @param workerId ID of the worker to remove.
+   */
+  unregister: (workerId: string): void => {
+    workers.delete(workerId)
+  },
 
-  setProcessing(workerId: string, jobId: string): void {
-    const w = this.workers.get(workerId)
+  /**
+   * Updates a worker's status to processing and links it to an active job.
+   * @param workerId ID of the active processing worker.
+   * @param jobId ID of the job being processed.
+   */
+  setProcessing: (workerId: string, jobId: string): void => {
+    const w = workers.get(workerId)
     if (w) {
       w.status = 'processing'
       w.current_job_id = jobId
       w.last_activity = new Date()
     }
-  }
+  },
 
-  setIdle(workerId: string): void {
-    const w = this.workers.get(workerId)
+  /**
+   * Reverts a worker's status to idle when awaiting jobs.
+   * @param workerId ID of the idle worker.
+   */
+  setIdle: (workerId: string): void => {
+    const w = workers.get(workerId)
     if (w) {
       w.status = 'idle'
       w.current_job_id = null
       w.last_activity = new Date()
     }
-  }
+  },
 
-  setStopped(workerId: string): void {
-    const w = this.workers.get(workerId)
+  /**
+   * Marks a worker as gracefully stopped.
+   * @param workerId ID of the stopped worker.
+   */
+  setStopped: (workerId: string): void => {
+    const w = workers.get(workerId)
     if (w) {
       w.status = 'stopped'
       w.current_job_id = null
       w.last_activity = new Date()
     }
-  }
+  },
 
-  incrementProcessed(workerId: string): void {
-    const w = this.workers.get(workerId)
+  /**
+   * Increments the success processing counter for a worker.
+   * @param workerId ID of the respective worker.
+   */
+  incrementProcessed: (workerId: string): void => {
+    const w = workers.get(workerId)
     if (w) w.jobs_processed++
-  }
+  },
 
-  incrementFailed(workerId: string): void {
-    const w = this.workers.get(workerId)
+  /**
+   * Increments the failure processing counter for a worker.
+   * @param workerId ID of the respective worker.
+   */
+  incrementFailed: (workerId: string): void => {
+    const w = workers.get(workerId)
     if (w) w.jobs_failed++
-  }
+  },
 
-  get(workerId: string): WorkerInfo | undefined {
-    return this.workers.get(workerId)
-  }
+  /**
+   * Retrieves specific state information about a worker.
+   * @param workerId ID of the worker.
+   * @returns Worker statistics or undefined.
+   */
+  get: (workerId: string): WorkerInfo | undefined => {
+    return workers.get(workerId)
+  },
 
-  getAll(): WorkerInfo[] {
-    return Array.from(this.workers.values())
-  }
+  /**
+   * Retrieves the comprehensive list of all known workers.
+   * @returns Array of WorkerInfo payloads.
+   */
+  getAll: (): WorkerInfo[] => {
+    return Array.from(workers.values())
+  },
 
-  has(workerId: string): boolean {
-    return this.workers.has(workerId)
+  /**
+   * Validates if a worker is present in the registry.
+   * @param workerId ID of the worker.
+   * @returns boolean presence indicator.
+   */
+  has: (workerId: string): boolean => {
+    return workers.has(workerId)
   }
 }
-
-export const workerRegistry = new WorkerRegistry()

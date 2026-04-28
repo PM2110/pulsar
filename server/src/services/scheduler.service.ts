@@ -8,7 +8,8 @@ export const schedulerService = {
   isRunning: false,
 
   /**
-   * Starts the scheduler loop.
+   * Starts the polling background scheduler loop.
+   * @param queueName Target queue to process.
    */
   async start(queueName: string = DEFAULT_QUEUE) {
     if (this.isRunning) return
@@ -36,7 +37,7 @@ export const schedulerService = {
   },
 
   /**
-   * Stops the scheduler loop.
+   * Gracefully aborts the background scheduler execution sequence.
    */
   stop() {
     this.isRunning = false

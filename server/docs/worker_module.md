@@ -33,6 +33,12 @@ To prevent queue starvation from failing jobs, Pulsar uses a two-stage queueing 
 - **Redis Delayed Queue**: Jobs waiting for their `run_at` time are stored in `delayed:queue:<name>`.
 - **Scheduler**: A background process in the worker monitors the delayed set. When a job is due, it promotes it to the main Priority Queue. It uses "smart sleep" logic to minimize latency by waking up exactly when the next job is due.
 
+### 5. Dynamic Autoscaler (Queue Telemetry)
+The background engine includes an `autoscalerService` which periodically evaluates active `queue:<name>` depths using Redis `ZCARD`.
+If the queue depth exceeds a configured threshold relative to the active workers:
+- **Scales Up:** Automatically initializes a brand new spawned concurrent worker logic instance assigning it a dynamic ID (`worker-<queue>-<hex>`).
+- **Scales Down:** If the queue fully drains (0 elements), the background daemon safely terminates idling instances bounding it down to the defined minimums without overconsuming OS resources.
+
 ## 🚀 Running the Worker
 
 ### In Docker

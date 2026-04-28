@@ -8,12 +8,12 @@ This directory contains the core backend API, the background workers, and the da
 server/
 ├── src/
 │   ├── config/       # Database, Redis, and Environment Configurations
-│   ├── controllers/  # Route handlers mapping requests to services
+│   ├── controllers/  # Purely declarative handler functions
 │   ├── db/           # PostgreSQL migrations and schema setup
 │   ├── middlewares/  # Security, Error Handling, Logging
-│   ├── routes/       # Express route definitions
-│   ├── scripts/      # Standalone utilities (e.g., job seeding)
-│   ├── services/     # Core business logic (Worker, Queue management)
+│   ├── routes/       # Express route bindings
+│   ├── scripts/      # Database seeding scripts
+│   ├── services/     # Core business logic (Worker, Queue, Autoscaler)
 │   ├── types/        # Zod validation schemas and TypeScript interfaces
 │   ├── app.ts        # Express app initialization
 │   ├── server.ts     # Main API entry point

@@ -22,6 +22,7 @@ In modern web applications, executing heavy, long-running, or failure-prone task
 *   **Built-in Retry & Failure Handling:** Probabilistic failure modes, dead-letter logic, and strict attempt limits configurable per job.
 *   **Real-time Observability:** A beautiful dark-themed Next.js dashboard showing live activity feeds via **SSE (Server-Sent Events)**.
 *   **Worker Control:** Dynamically spawn or stop workers directly from the frontend UI.
+*   **Dynamic Auto-scaling:** An internal Autoscaler background daemon automatically spins up active processes when queue telemetry thresholds are breached and seamlessly scales down idle units.
 *   **Dockerized:** A fully containerized microservice architecture ready for staging/production deployment out of the box.
 
 ## 🏗 System Architecture

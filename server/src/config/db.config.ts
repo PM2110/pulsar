@@ -17,3 +17,8 @@ pool.on('error', (err) => {
 })
 
 export const query = (text: string, params?: any[]) => pool.query(text, params)
+
+export const getClient = async () => {
+  const client = await pool.connect()
+  return client
+}
