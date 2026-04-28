@@ -8,7 +8,7 @@ export const pool = new Pool({
   // Add production pool settings
   max: env.NODE_ENV === 'production' ? 20 : 10,
   idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 2000,
+  connectionTimeoutMillis: 5000, // increased to 5 seconds
 })
 
 pool.on('error', (err) => {

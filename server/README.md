@@ -73,4 +73,9 @@ pnpm worker
 - `QUEUE_NAME`: Specifies which queue a started worker should consume (default: `default`)
 - `WORKER_ID`: Unique identifier for the worker process
 
+## Docker Troubleshooting
+- If the API logs show a Postgres connection timeout right after `docker compose up` (for example `/api/stats` returning 500), verify the `db` service is attached to the compose network and resolvable from `app`:
+  - `docker exec pulsar-app-1 getent hosts db`
+  - If it fails, recreate just Postgres: `docker compose up -d --no-deps --force-recreate db`
+
 For in-depth documentation on the inner workings, please refer to the files within the `docs/` folder.
