@@ -32,6 +32,14 @@ export const apiService = {
     const response = await api.post('/api/workers/stop', { worker_id });
     return response.data;
   },
+  getAutoscalerConfig: async () => {
+    const response = await api.get('/api/workers/autoscaler');
+    return response.data;
+  },
+  updateAutoscalerConfig: async (configData: any) => {
+    const response = await api.post('/api/workers/autoscaler', configData);
+    return response.data;
+  },
 
   // Jobs
   getJobs: async (params: any) => {
