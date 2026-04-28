@@ -10,11 +10,11 @@ const JOB_TYPES: Record<string, string[]> = {
 
 const ALL_QUEUES = Object.keys(JOB_TYPES)
 
-function randomBetween(min: number, max: number): number {
+const randomBetween = (min: number, max: number): number => {
   return Math.floor(Math.random() * (max - min + 1)) + min
 }
 
-function randomPayload(jobType: string): object {
+const randomPayload = (jobType: string): object => {
   const payloads: Record<string, object> = {
     email_send: { to: `user${randomBetween(1, 999)}@example.com`, subject: 'Notification', body: 'Hello!' },
     sms_send: { phone: `+1${randomBetween(1000000000, 9999999999)}`, message: 'Your OTP is ' + randomBetween(1000, 9999) },

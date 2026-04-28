@@ -1,7 +1,14 @@
 import { query } from '../config/db.config.js'
 import { redisClient } from '../config/redis.config.js'
 
+/**
+ * Provides database aggregation bridging Redis and PostgreSQL representations.
+ */
 export const statsService = {
+  /**
+   * Consolidates dynamic system-wide metrics representing job statuses, depths, and overall worker efficacy.
+   * @returns Analytical payload Object containing structured system telemetry.
+   */
   getStats: async () => {
     // Job status counts from PostgreSQL
     const statusResult = await query(`

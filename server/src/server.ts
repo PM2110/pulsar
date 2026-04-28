@@ -6,7 +6,7 @@ import { Server as SocketIOServer } from 'socket.io'
 import { createServer } from 'http'
 import { statsService } from './services/stats.service.js'
 
-async function start() {
+const start = async () => {
   const port = parseInt(env.PORT, 10) || 3000
 
   try {

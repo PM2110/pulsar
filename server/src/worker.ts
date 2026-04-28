@@ -3,7 +3,7 @@ import { connectRedis } from './config/redis.config.js'
 import { pool } from './config/db.config.js'
 import { workerService } from './services/worker.service.js'
 
-async function start() {
+const start = async () => {
   console.log(`📡 Worker process starting in ${env.NODE_ENV} mode...`)
 
   try {

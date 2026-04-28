@@ -6,7 +6,7 @@ import { pool } from '../config/db.config.js'
 const __filename = fileURLToPath(import.meta.url)
 const __dirname = path.dirname(__filename)
 
-async function migrate() {
+const migrate = async () => {
   const migrationsDir = path.join(__dirname, 'migrations')
   
   try {
