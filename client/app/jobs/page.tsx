@@ -58,13 +58,12 @@ function formatTime(iso: string | null) {
 function StatusBadge({ status }: { status: string }) {
   return (
     <span className={`badge ${STATUS_CLASS[status] || "badge-pending"}`}>
-      {status === "processing" && <div className="spinner" style={{ width: 9, height: 9, marginRight: 2 }} />}
       {status}
     </span>
   );
 }
 
-function JobModal({ job, onClose }: { job: Job; onClose: () => void }) {
+function JobModal({ job, onClose, onRetry }: { job: Job; onClose: () => void; onRetry?: (id: string) => void }) {
   const [attempts, setAttempts] = useState<JobAttempt[]>([]);
 
   useEffect(() => {
@@ -100,9 +99,16 @@ function JobModal({ job, onClose }: { job: Job; onClose: () => void }) {
               {job.queue_name} · priority {job.priority} · {job.failure_mode}
             </p>
           </div>
-          <button className="btn btn-ghost" onClick={onClose} style={{ padding: "4px 10px" }}>
-            ✕
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            {job.status === "failed" && onRetry && (
+              <button className="btn btn-ghost" onClick={() => onRetry(job.id)} style={{ padding: "4px 10px", fontSize: 12, border: "1px solid rgba(255,255,255,0.1)" }}>
+                ↻ Retry
+              </button>
+            )}
+            <button className="btn btn-ghost" onClick={onClose} style={{ padding: "4px 10px" }}>
+              ✕
+            </button>
+          </div>
         </div>
 
         <div style={{ padding: 24 }}>
@@ -131,10 +137,10 @@ function JobModal({ job, onClose }: { job: Job; onClose: () => void }) {
                 const done = i < job.attempts;
                 const current = i === job.attempts - 1;
                 let bg = "rgba(255,255,255,0.06)";
-                if (done && job.status === "completed" && current) bg = "var(--completed)";
+                if (done && job.status === "completed" && current) bg = "#22c55e";
                 else if (done && job.status === "failed" && current) bg = "var(--failed)";
-                else if (done && current && job.status === "processing") bg = "var(--processing)";
-                else if (done) bg = "var(--retrying)";
+                else if (done && current && job.status === "processing") bg = "rgba(255,255,255,0.5)";
+                else if (done) bg = "rgba(239,68,68,0.4)";
                 return (
                   <div
                     key={i}
@@ -379,6 +385,12 @@ export default function JobsPage() {
     fetchJobs();
   };
 
+  const retryJob = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    await apiService.retryJob(id);
+    fetchJobs();
+  };
+
   return (
     <div style={{ padding: "28px 32px" }}>
       {/* Header */}
@@ -477,11 +489,11 @@ export default function JobsPage() {
                           const current = i === job.attempts - 1;
                           let bg = "rgba(255,255,255,0.08)";
                           if (attempted && current) {
-                            if (job.status === "completed") bg = "var(--completed)";
+                            if (job.status === "completed") bg = "#22c55e";
                             else if (job.status === "failed") bg = "var(--failed)";
-                            else if (job.status === "processing") bg = "var(--processing)";
-                            else bg = "var(--retrying)";
-                          } else if (attempted) bg = "var(--retrying)";
+                            else if (job.status === "processing") bg = "rgba(255,255,255,0.6)";
+                            else bg = "rgba(239,68,68,0.45)";
+                          } else if (attempted) bg = "rgba(239,68,68,0.35)";
                           return (
                             <div
                               key={i}
@@ -505,13 +517,26 @@ export default function JobsPage() {
                     </td>
                     <td style={{ fontSize: 11 }}>{formatTime(job.created_at)}</td>
                     <td>
-                      <button
-                        className="btn btn-ghost"
-                        style={{ padding: "3px 9px", fontSize: 11 }}
-                        onClick={(e) => deleteJob(job.id, e)}
-                      >
-                        ✕
-                      </button>
+                      <div style={{ display: "flex", gap: 4 }}>
+                        {job.status === "failed" && (
+                          <button
+                            className="btn btn-ghost"
+                            style={{ padding: "3px 9px", fontSize: 11 }}
+                            onClick={(e) => retryJob(job.id, e)}
+                            title="Retry Job"
+                          >
+                            ↻
+                          </button>
+                        )}
+                        <button
+                          className="btn btn-ghost"
+                          style={{ padding: "3px 9px", fontSize: 11 }}
+                          onClick={(e) => deleteJob(job.id, e)}
+                          title="Delete Job"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 ))
@@ -540,7 +565,17 @@ export default function JobsPage() {
         </div>
       </div>
 
-      {selectedJob && <JobModal job={selectedJob} onClose={() => setSelectedJob(null)} />}
+      {selectedJob && (
+        <JobModal
+          job={selectedJob}
+          onClose={() => setSelectedJob(null)}
+          onRetry={async (id) => {
+            await apiService.retryJob(id);
+            fetchJobs();
+            setSelectedJob(null);
+          }}
+        />
+      )}
       {showAddDrawer && (
         <AddJobDrawer onClose={() => setShowAddDrawer(false)} onAdded={fetchJobs} />
       )}

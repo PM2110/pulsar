@@ -95,6 +95,10 @@ services:
       - "5432:5432"
     env_file:
       - ./server/.env.${NODE_ENV:-development}
+    networks:
+      default:
+        aliases:
+          - db
     volumes:
       - postgres_data:/var/lib/postgresql
     healthcheck:
