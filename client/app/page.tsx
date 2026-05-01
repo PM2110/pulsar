@@ -32,6 +32,7 @@ interface Stats {
     avg_latency_ms: number;
   };
   throughput_last_60s: number;
+  stuck_jobs_count: number;
 }
 
 interface FeedEvent {
@@ -121,7 +122,7 @@ export default function DashboardPage() {
   // Fetch initially, then rely on WebSocket for live updates
   useEffect(() => {
     fetchStats();
-    
+
     socket.on("stats_update", (data: Stats) => {
       setStats(data);
     });
@@ -139,7 +140,7 @@ export default function DashboardPage() {
         ...ev,
         timestamp: ev.timestamp || new Date().toISOString()
       };
-      
+
       setFeed((prev) => {
         const next = [eventWithTime, ...prev].slice(0, 60);
         return next;
@@ -193,6 +194,31 @@ export default function DashboardPage() {
           Live overview of job processing, queue health, and throughput
         </p>
       </div>
+
+      {/* Stuck Jobs Warning */}
+      {stats && stats.stuck_jobs_count > 0 && (
+        <div
+          style={{
+            background: "rgba(248, 113, 113, 0.1)",
+            border: "1px solid rgba(248, 113, 113, 0.3)",
+            borderRadius: 10,
+            padding: "16px 20px",
+            marginBottom: 24,
+            display: "flex",
+            alignItems: "center",
+            gap: 16,
+            animation: "soft-blink 2s ease-in-out infinite"
+          }}
+        >
+          <div style={{ fontSize: 24 }}>⚠️</div>
+          <div>
+            <div style={{ fontWeight: 700, color: "#f87171", fontSize: 15 }}>Stuck Jobs Detected</div>
+            <div style={{ fontSize: 13, color: "rgba(248, 113, 113, 0.8)" }}>
+              {stats.stuck_jobs_count} job(s) have been in pending state for more than 60 seconds. This might indicate worker capacity issues or queue stalls.
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Stat Cards */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>

@@ -146,5 +146,52 @@ export const queueService = {
       console.error(`❌ Reaper failed for ${queueName}:`, error)
       return 0
     }
+  },
+
+  /**
+   * Implements "Priority Aging" for queue fairness.
+   * Periodically finds jobs waiting too long and boosts their priority.
+   */
+  async applyPriorityAging(queueName: string): Promise<number> {
+    try {
+      // Find jobs pending for > 1 min that haven't been boosted recently
+      const agedResult = await query(
+        `SELECT id, priority, queue_name, EXTRACT(EPOCH FROM created_at) * 1000 as created_at_ms
+         FROM jobs 
+         WHERE status = 'pending' 
+           AND queue_name = $1
+           AND created_at < NOW() - INTERVAL '1 minute'
+           AND priority < 10
+           AND (updated_at < NOW() - INTERVAL '1 minute' OR updated_at IS NULL)
+         LIMIT 50`,
+        [queueName]
+      )
+
+      let boostedCount = 0
+      for (const job of agedResult.rows) {
+        const newPriority = Math.min(10, job.priority + 1)
+        
+        // Update priority in DB and refresh updated_at
+        await query(
+          'UPDATE jobs SET priority = $1, updated_at = NOW() WHERE id = $2',
+          [newPriority, job.id]
+        )
+        
+        // Re-enqueue in Redis with the improved priority.
+        // We keep the original created_at as the score timestamp so older jobs 
+        // still come first within the same priority level.
+        await this.enqueueJob(job.queue_name, job.id, newPriority, parseFloat(job.created_at_ms))
+        boostedCount++
+      }
+
+      if (boostedCount > 0) {
+        console.log(`⚖️ Fairness: Boosted ${boostedCount} jobs in queue: ${queueName}`)
+        redisClient.publish('pulsar:events', JSON.stringify({ type: 'fairness_boost', queue_name: queueName, count: boostedCount }))
+      }
+      return boostedCount
+    } catch (error) {
+      console.error(`❌ Priority Aging failed for ${queueName}:`, error)
+      return 0
+    }
   }
 }

@@ -8,6 +8,7 @@ import { outboxService } from './outbox.service.js'
 export const schedulerService = {
   isRunning: false,
   lastReaperRun: 0,
+  lastAgingRun: 0,
 
   /**
    * Starts the polling background scheduler loop.
@@ -17,7 +18,7 @@ export const schedulerService = {
     if (this.isRunning) return
     this.isRunning = true
     console.log(`⏰ Redis Scheduler started for queue: ${queueName}`)
-    
+
     while (this.isRunning) {
       try {
         // 1. Process Outbox Relay (High Frequency - every loop/1s)
@@ -34,12 +35,19 @@ export const schedulerService = {
           this.lastReaperRun = now
         }
 
-        // 3. Promote ready jobs and get wait time until next job
+        // 3. Run Priority Aging (Queue Fairness - every 30s)
+        // Boosts jobs that have been waiting too long to prevent starvation.
+        if (now - this.lastAgingRun > 30000) {
+          await queueService.applyPriorityAging(queueName)
+          this.lastAgingRun = now
+        }
+
+        // 4. Promote ready jobs and get wait time until next job
         const nextWait = await queueService.promoteDelayedJobs(queueName)
-        
+
         // Smart sleep: if a job is due soon, wait for it, otherwise default to 1s
         const sleepTime = nextWait !== null ? Math.min(1000, nextWait) : 1000
-        
+
         if (nextWait !== null && nextWait < 1000) {
           console.log(`💤 Next job due in ${nextWait}ms. Sleeping...`)
         }
