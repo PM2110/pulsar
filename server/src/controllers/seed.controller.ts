@@ -68,6 +68,7 @@ export const seedController = {
           : null
         const payload = randomPayload(jobType)
 
+        // 2. Insert the job into the primary 'jobs' table
         const insertQuery = `
           INSERT INTO jobs (
             queue_name, job_type, payload, status, priority,
@@ -86,7 +87,9 @@ export const seedController = {
         const newJob = result.rows[0]
         createdJobs.push(newJob)
 
-        // Atomic side effect: Add to outbox in the same transaction
+        // 3. Atomic side effect: Add to outbox in the same transaction.
+        // This ensures that the job creation and the notification to the relay
+        // are committed together, preventing data inconsistency.
         await outboxService.addEntry('job_enqueue', {
           job_id: newJob.id,
           queue_name: newJob.queue_name,
@@ -94,9 +97,11 @@ export const seedController = {
         }, client)
       }
 
+      // 4. Commit the transaction.
+      // Once committed, the jobs are visible in the DB, and the outbox entry 
+      // is ready to be picked up by the Outbox Relay.
       await client.query('COMMIT')
       console.log(`✅ Transaction committed. Created ${createdJobs.length} jobs and outbox entries.`)
-      console.log(`✅ Transaction committed. Created ${createdJobs.length} jobs in DB.`)
       
       res.status(201).json({
         message: `Successfully seeded ${createdJobs.length} jobs via Outbox`,
@@ -104,6 +109,7 @@ export const seedController = {
         jobs: createdJobs
       })
     } catch (err) {
+      // If anything fails, rollback the entire transaction to maintain atomicity.
       if (client) await client.query('ROLLBACK')
       next(err)
     } finally {

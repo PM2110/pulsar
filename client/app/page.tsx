@@ -289,7 +289,11 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Outbox Pipeline */}
+        {/* 
+            Outbox Relay Pipeline 
+            Displays the status of the Transactional Outbox.
+            This represents the intermediate step between DB job creation and Redis enqueuing.
+        */}
         <div className="card">
           <div className="section-header">
             <span className="section-title">Outbox Relay Pipeline</span>

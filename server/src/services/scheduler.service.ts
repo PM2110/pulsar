@@ -21,9 +21,13 @@ export const schedulerService = {
     while (this.isRunning) {
       try {
         // 1. Process Outbox Relay (High Frequency - every loop/1s)
+        // Checks the 'outbox' table for pending entries and enqueues them in Redis.
+        // This runs every ~1s to ensure low-latency job ingestion.
         await outboxService.relayPendingEntries()
 
         // 2. Run Job Reaper (Low Frequency - every 5 mins) to catch "starved" jobs
+        // Secondary consistency mechanism that scans for jobs 'stuck' in pending state.
+        // Acts as a fallback if both the immediate enqueue AND the outbox relay fail.
         const now = Date.now()
         if (now - this.lastReaperRun > 300000) {
           await queueService.reSyncPendingJobs(queueName)

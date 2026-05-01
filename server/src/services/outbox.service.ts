@@ -10,6 +10,10 @@ export const outboxService = {
   /**
    * Adds an entry to the outbox table.
    * Acceptance of an optional client allows it to be part of an external transaction.
+   * 
+   * @param eventType - Identifier for the side effect (e.g. 'job_enqueue')
+   * @param payload - Data required to execute the effect
+   * @param client - (Optional) PostgreSQL client for transaction participation
    */
   async addEntry(eventType: string, payload: any, client?: any) {
     const q = client ? client.query.bind(client) : query
@@ -19,22 +23,23 @@ export const outboxService = {
       RETURNING id
     `
     const result = await q(insertQuery, [eventType, payload])
-    
+
     // Notify about state change (triggers dashboard stats refresh)
     redisClient.publish('pulsar:events', JSON.stringify({ type: 'outbox_update' }))
-    
+
     return result.rows[0].id
   },
 
   /**
    * Relays pending outbox entries to their respective handlers.
-   * Uses row-level locking (FOR UPDATE SKIP LOCKED) for safe concurrent processing.
+   * Processes available entries using row-level locking (FOR UPDATE SKIP LOCKED) 
+   * to ensure no two worker instances process the same record.
    */
   async relayPendingEntries() {
     const client = await pool.connect()
     try {
       await client.query('BEGIN')
-      
+
       // Fetch pending entries with a lock
       const selectQuery = `
         SELECT * FROM outbox 
@@ -68,7 +73,7 @@ export const outboxService = {
           )
         } catch (err: any) {
           console.error(`❌ Outbox Relay: Failed to process entry ${entry.id}:`, err.message)
-          
+
           // Increment retry count and log error
           await client.query(
             `UPDATE outbox 
@@ -83,7 +88,7 @@ export const outboxService = {
       }
 
       await client.query('COMMIT')
-      
+
       // Notify about state change (triggers dashboard stats refresh)
       redisClient.publish('pulsar:events', JSON.stringify({ type: 'outbox_update' }))
     } catch (err) {
