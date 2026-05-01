@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import { getClient } from '../config/db.config.js'
-import { queueService } from '../services/queue.service.js'
+import { outboxService } from '../services/outbox.service.js'
 
 const JOB_TYPES: Record<string, string[]> = {
   notifications: ['email_send', 'sms_send', 'push_notify'],
@@ -82,15 +82,24 @@ export const seedController = {
           priority, maxAttempts, failureMode, failProb
         ])
 
+
         const newJob = result.rows[0]
-        await queueService.enqueueJob(queueName, newJob.id, priority)
         createdJobs.push(newJob)
+
+        // Atomic side effect: Add to outbox in the same transaction
+        await outboxService.addEntry('job_enqueue', {
+          job_id: newJob.id,
+          queue_name: newJob.queue_name,
+          priority: newJob.priority
+        }, client)
       }
 
       await client.query('COMMIT')
-
+      console.log(`✅ Transaction committed. Created ${createdJobs.length} jobs and outbox entries.`)
+      console.log(`✅ Transaction committed. Created ${createdJobs.length} jobs in DB.`)
+      
       res.status(201).json({
-        message: `Successfully seeded ${createdJobs.length} jobs`,
+        message: `Successfully seeded ${createdJobs.length} jobs via Outbox`,
         count: createdJobs.length,
         jobs: createdJobs
       })
