@@ -1,4 +1,5 @@
 import { redisClient } from '../config/redis.config.js'
+import { query } from '../config/db.config.js'
 
 /**
  * Service to handle job queuing logic using Redis.
@@ -69,11 +70,11 @@ export const queueService = {
         for (const { value: val, score: originalRunAt } of readyJobs) {
           // Atomically remove from delayed queue to "claim" the job for promotion
           const removed = await redisClient.zRem(delayedKey, val)
-          
+
           if (removed === 1) {
             const [jobId, priorityStr] = val.split(':')
             const priority = parseInt(priorityStr, 10)
-            
+
             console.log(`🚀 Promoting job ${jobId} (scheduled for ${new Date(originalRunAt).toISOString()})`)
             // Move to main queue using its original scheduled time for ranking
             await this.enqueueJob(queueName, jobId, priority, originalRunAt)
@@ -106,6 +107,44 @@ export const queueService = {
       console.log(`🗑️ Job ${jobId} removed from ${redisKey}`)
     } catch (error) {
       console.error(`❌ Failed to remove job ${jobId} from ${queueName}:`, error)
+    }
+  },
+
+  /**
+   * Re-synchronizes pending jobs from the DB to Redis if they are missing.
+   * Looks for jobs in 'pending' status that haven't been updated for 5 minutes.
+   */
+  async reSyncPendingJobs(queueName: string): Promise<number> {
+    try {
+      // Find jobs in 'pending' status that were updated more than 5 minutes ago
+      const staleResult = await query(
+        `SELECT id, priority, queue_name 
+         FROM jobs 
+         WHERE status = 'pending' 
+           AND queue_name = $1
+           AND (updated_at < NOW() - INTERVAL '5 minutes' OR updated_at IS NULL)
+         LIMIT 100`,
+        [queueName]
+      )
+
+      let resyncedCount = 0
+      for (const job of staleResult.rows) {
+        // Just re-enqueue. Redis ZADD will update the score if it already exists,
+        // or add it if it was missing.
+        await this.enqueueJob(job.queue_name, job.id, job.priority)
+        
+        // Update updated_at so we don't keep picking it up every loop
+        await query('UPDATE jobs SET updated_at = NOW() WHERE id = $1', [job.id])
+        resyncedCount++
+      }
+
+      if (resyncedCount > 0) {
+        console.log(`♻️ Reaper re-synced ${resyncedCount} stuck jobs for queue: ${queueName}`)
+      }
+      return resyncedCount
+    } catch (error) {
+      console.error(`❌ Reaper failed for ${queueName}:`, error)
+      return 0
     }
   }
 }

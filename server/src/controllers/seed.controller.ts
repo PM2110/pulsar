@@ -1,6 +1,6 @@
 import { Request, Response, NextFunction } from 'express'
 import { getClient } from '../config/db.config.js'
-import { queueService } from '../services/queue.service.js'
+import { outboxService } from '../services/outbox.service.js'
 
 const JOB_TYPES: Record<string, string[]> = {
   notifications: ['email_send', 'sms_send', 'push_notify'],
@@ -68,6 +68,7 @@ export const seedController = {
           : null
         const payload = randomPayload(jobType)
 
+        // 2. Insert the job into the primary 'jobs' table
         const insertQuery = `
           INSERT INTO jobs (
             queue_name, job_type, payload, status, priority,
@@ -82,19 +83,33 @@ export const seedController = {
           priority, maxAttempts, failureMode, failProb
         ])
 
+
         const newJob = result.rows[0]
-        await queueService.enqueueJob(queueName, newJob.id, priority)
         createdJobs.push(newJob)
+
+        // 3. Atomic side effect: Add to outbox in the same transaction.
+        // This ensures that the job creation and the notification to the relay
+        // are committed together, preventing data inconsistency.
+        await outboxService.addEntry('job_enqueue', {
+          job_id: newJob.id,
+          queue_name: newJob.queue_name,
+          priority: newJob.priority
+        }, client)
       }
 
+      // 4. Commit the transaction.
+      // Once committed, the jobs are visible in the DB, and the outbox entry 
+      // is ready to be picked up by the Outbox Relay.
       await client.query('COMMIT')
-
+      console.log(`✅ Transaction committed. Created ${createdJobs.length} jobs and outbox entries.`)
+      
       res.status(201).json({
-        message: `Successfully seeded ${createdJobs.length} jobs`,
+        message: `Successfully seeded ${createdJobs.length} jobs via Outbox`,
         count: createdJobs.length,
         jobs: createdJobs
       })
     } catch (err) {
+      // If anything fails, rollback the entire transaction to maintain atomicity.
       if (client) await client.query('ROLLBACK')
       next(err)
     } finally {

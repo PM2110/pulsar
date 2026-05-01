@@ -119,11 +119,11 @@ export const workerService = {
       if (startResult.rows.length === 0) {
         // If update failed, check if it was due to an early start
         const checkResult = await query('SELECT status, run_at, priority FROM jobs WHERE id = $1', [jobId])
-        
+
         if (checkResult.rows.length > 0) {
           const { status, run_at, priority } = checkResult.rows[0]
           const runAtDate = new Date(run_at)
-          
+
           if (status === 'pending' && runAtDate > new Date()) {
             console.warn(`⏳ Job ${jobId} picked up early (Scheduled for ${run_at}). Re-scheduling in delayed queue.`)
             await queueService.enqueueDelayedJob(queueName, jobId, priority, runAtDate.getTime())
@@ -216,13 +216,13 @@ export const workerService = {
       if (job) {
         const canRetry = job.attempts < job.max_attempts
         const newStatus = canRetry ? 'pending' : 'failed'
-        
+
         let nextRunAt: Date | null = null
         if (canRetry) {
           const delay = this.calculateBackoff(job.attempts)
           nextRunAt = new Date(Date.now() + delay)
           console.log(`🔄 Job ${jobId} failed. Retrying in ${delay / 1000}s (at ${nextRunAt.toISOString()})`)
-          
+
           // Add to Redis delayed queue
           await queueService.enqueueDelayedJob(queueName, jobId, job.priority, nextRunAt.getTime())
         }

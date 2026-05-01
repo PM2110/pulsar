@@ -1,11 +1,13 @@
 import { DEFAULT_QUEUE } from '../config/queue.config.js'
 import { queueService } from './queue.service.js'
+import { outboxService } from './outbox.service.js'
 
 /**
  * Service to handle periodic promotion of delayed jobs to the main queue.
  */
 export const schedulerService = {
   isRunning: false,
+  lastReaperRun: 0,
 
   /**
    * Starts the polling background scheduler loop.
@@ -18,7 +20,21 @@ export const schedulerService = {
     
     while (this.isRunning) {
       try {
-        // Promote ready jobs and get wait time until next job
+        // 1. Process Outbox Relay (High Frequency - every loop/1s)
+        // Checks the 'outbox' table for pending entries and enqueues them in Redis.
+        // This runs every ~1s to ensure low-latency job ingestion.
+        await outboxService.relayPendingEntries()
+
+        // 2. Run Job Reaper (Low Frequency - every 5 mins) to catch "starved" jobs
+        // Secondary consistency mechanism that scans for jobs 'stuck' in pending state.
+        // Acts as a fallback if both the immediate enqueue AND the outbox relay fail.
+        const now = Date.now()
+        if (now - this.lastReaperRun > 300000) {
+          await queueService.reSyncPendingJobs(queueName)
+          this.lastReaperRun = now
+        }
+
+        // 3. Promote ready jobs and get wait time until next job
         const nextWait = await queueService.promoteDelayedJobs(queueName)
         
         // Smart sleep: if a job is due soon, wait for it, otherwise default to 1s
