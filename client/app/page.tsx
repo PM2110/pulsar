@@ -11,6 +11,12 @@ interface Stats {
     completed: number;
     failed: number;
   };
+  outbox: {
+    total: number;
+    pending: number;
+    processed: number;
+    failed: number;
+  };
   queues: {
     depths: Record<string, number>;
     delayed: Record<string, number>;
@@ -206,7 +212,7 @@ export default function DashboardPage() {
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }}>
         {/* Job distribution bar */}
         <div className="card">
           <div className="section-header">
@@ -280,6 +286,45 @@ export default function DashboardPage() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Outbox Pipeline */}
+        <div className="card">
+          <div className="section-header">
+            <span className="section-title">Outbox Relay Pipeline</span>
+            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{stats?.outbox.total || 0} total events</span>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
+            {[
+              { label: "Pipeline Pending", value: stats?.outbox.pending ?? 0, color: "var(--text-secondary)" },
+              { label: "Relayed Success", value: stats?.outbox.processed ?? 0, color: "var(--completed)" },
+              { label: "Relay Failed", value: stats?.outbox.failed ?? 0, color: "var(--failed)" },
+            ].map((m) => (
+              <div
+                key={m.label}
+                style={{
+                  background: "rgba(255,255,255,0.03)",
+                  borderRadius: 8,
+                  padding: "12px 14px",
+                  border: "1px solid var(--border)",
+                }}
+              >
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>{m.label}</div>
+                <div
+                  style={{
+                    fontSize: 20,
+                    fontWeight: 700,
+                    color: m.color,
+                  }}
+                >
+                  <AnimatedCounter value={m.value} />
+                </div>
+              </div>
+            ))}
+          </div>
+          <div style={{ marginTop: 14, fontSize: 11, color: "var(--text-faint)", fontStyle: "italic" }}>
+            Ensures atomic job creation between DB and Redis
           </div>
         </div>
       </div>

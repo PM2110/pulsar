@@ -116,10 +116,31 @@ export const statsService = {
     `)
     const throughput = parseInt(throughputResult.rows[0].count, 10)
 
+    // Outbox stats
+    const outboxStatusResult = await query(`
+      SELECT status, COUNT(*) as count
+      FROM outbox
+      GROUP BY status
+    `)
+    const outboxCounts: Record<string, number> = {
+      pending: 0,
+      processed: 0,
+      failed: 0
+    }
+    for (const row of outboxStatusResult.rows) {
+      outboxCounts[row.status] = parseInt(row.count, 10)
+    }
+    const outboxTotalResult = await query('SELECT COUNT(*) as count FROM outbox')
+    const outboxTotal = parseInt(outboxTotalResult.rows[0].count, 10)
+
     return {
       jobs: {
         total,
         ...statusCounts
+      },
+      outbox: {
+        total: outboxTotal,
+        ...outboxCounts
       },
       queues: {
         depths: queueDepths,

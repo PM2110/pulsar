@@ -1,4 +1,5 @@
 import { query, pool } from '../config/db.config.js'
+import { redisClient } from '../config/redis.config.js'
 import { queueService } from './queue.service.js'
 
 /**
@@ -18,6 +19,10 @@ export const outboxService = {
       RETURNING id
     `
     const result = await q(insertQuery, [eventType, payload])
+    
+    // Notify about state change (triggers dashboard stats refresh)
+    redisClient.publish('pulsar:events', JSON.stringify({ type: 'outbox_update' }))
+    
     return result.rows[0].id
   },
 
@@ -78,6 +83,9 @@ export const outboxService = {
       }
 
       await client.query('COMMIT')
+      
+      // Notify about state change (triggers dashboard stats refresh)
+      redisClient.publish('pulsar:events', JSON.stringify({ type: 'outbox_update' }))
     } catch (err) {
       if (client) await client.query('ROLLBACK')
       console.error('❌ Outbox Relay Error:', err)
