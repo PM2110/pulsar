@@ -116,6 +116,14 @@ export const statsService = {
     `)
     const throughput = parseInt(throughputResult.rows[0].count, 10)
 
+    // Stuck jobs detection: pending for more than 60 seconds
+    const stuckResult = await query(`
+      SELECT COUNT(*) as count
+      FROM jobs
+      WHERE status = 'pending' AND created_at < NOW() - INTERVAL '60 seconds'
+    `)
+    const stuckJobsCount = parseInt(stuckResult.rows[0].count, 10)
+
     // Outbox stats
     const outboxStatusResult = await query(`
       SELECT status, COUNT(*) as count
@@ -156,7 +164,8 @@ export const statsService = {
         avg_execution_ms: parseFloat(attempts.avg_execution_ms) || 0,
         avg_latency_ms: parseFloat(attempts.avg_latency_ms) || 0
       },
-      throughput_last_60s: throughput
+      throughput_last_60s: throughput,
+      stuck_jobs_count: stuckJobsCount
     }
   }
 }

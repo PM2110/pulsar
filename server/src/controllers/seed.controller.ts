@@ -102,7 +102,7 @@ export const seedController = {
       // is ready to be picked up by the Outbox Relay.
       await client.query('COMMIT')
       console.log(`✅ Transaction committed. Created ${createdJobs.length} jobs and outbox entries.`)
-      
+
       res.status(201).json({
         message: `Successfully seeded ${createdJobs.length} jobs via Outbox`,
         count: createdJobs.length,
