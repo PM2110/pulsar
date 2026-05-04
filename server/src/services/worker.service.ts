@@ -8,8 +8,11 @@ import { workerRegistry } from './worker.registry.js'
 /**
  * Service to handle worker logic: polling Redis and processing jobs.
  */
-// Track running state per worker instance
+// Track running state and concurrency per worker instance
 const runningInstances: Map<string, boolean> = new Map()
+const instanceConcurrency: Map<string, number> = new Map()
+const activeTasks: Map<string, Set<Promise<void>>> = new Map()
+const workerQueues: Map<string, string> = new Map() // Tracks workerId -> queueName
 
 export const workerService = {
   isRunning: false,
@@ -20,18 +23,36 @@ export const workerService = {
   async start(queueName: string = DEFAULT_QUEUE, workerId: string = 'worker-1') {
     if (this.isRunning) return
     this.isRunning = true
-    workerRegistry.register(workerId, queueName)
-    console.log(`🚀 Worker started polling queue: ${queueName}`)
+    instanceConcurrency.set(workerId, 1)
+    workerQueues.set(workerId, queueName)
+    activeTasks.set(workerId, new Set())
+
+    await workerRegistry.register(workerId, queueName)
+    console.log(`🚀 Worker started polling queue: ${queueName} with concurrency: 1`)
+
+    // Heartbeat to keep registration alive in Redis
+    const heartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
 
     while (this.isRunning) {
       try {
-        await this.pollAndProcess(queueName, workerId)
+        const concurrency = instanceConcurrency.get(workerId) || 1
+        const tasks = activeTasks.get(workerId)!
+
+        if (tasks.size < concurrency) {
+          const taskPromise = this.pollAndProcess(queueName, workerId)
+          tasks.add(taskPromise)
+          taskPromise.finally(() => tasks.delete(taskPromise))
+        } else {
+          // At capacity, wait a bit before checking again
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
       } catch (error) {
         console.error('❌ Worker loop error:', error)
         await new Promise(resolve => setTimeout(resolve, 5000))
       }
     }
-    workerRegistry.setStopped(workerId)
+    clearInterval(heartbeat)
+    await workerRegistry.setStopped(workerId)
   },
 
   /**
@@ -39,19 +60,56 @@ export const workerService = {
    */
   async startInstance(queueName: string, workerId: string) {
     runningInstances.set(workerId, true)
-    workerRegistry.register(workerId, queueName)
-    console.log(`🚀 Worker instance '${workerId}' started on queue: ${queueName}`)
+    instanceConcurrency.set(workerId, 1)
+    workerQueues.set(workerId, queueName)
+    activeTasks.set(workerId, new Set())
+
+    await workerRegistry.register(workerId, queueName)
+    console.log(`🚀 Worker instance '${workerId}' started on queue: ${queueName} with concurrency: 1`)
+
+    const heartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
 
     while (runningInstances.get(workerId)) {
       try {
-        await this.pollAndProcess(queueName, workerId)
+        const concurrency = instanceConcurrency.get(workerId) || 1
+        const tasks = activeTasks.get(workerId)!
+
+        if (tasks.size < concurrency) {
+          const taskPromise = this.pollAndProcess(queueName, workerId)
+          tasks.add(taskPromise)
+          taskPromise.finally(() => tasks.delete(taskPromise))
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
       } catch (error) {
         console.error(`❌ Worker instance '${workerId}' error:`, error)
         await new Promise(resolve => setTimeout(resolve, 5000))
       }
     }
-    workerRegistry.setStopped(workerId)
+    clearInterval(heartbeat)
+    await workerRegistry.setStopped(workerId)
+    workerQueues.delete(workerId)
     console.log(`🛑 Worker instance '${workerId}' stopped.`)
+  },
+
+  /**
+   * Dynamically updates the concurrency for a specific worker instance.
+   */
+  async updateConcurrency(workerId: string, concurrency: number) {
+    console.log(`📈 Updating concurrency for worker '${workerId}' to ${concurrency}`)
+    instanceConcurrency.set(workerId, concurrency)
+    await workerRegistry.updateConcurrency(workerId, concurrency)
+  },
+
+  /**
+   * Batch updates all local workers belonging to a queue when an autoscaling update arrives.
+   */
+  async handleConcurrencyUpdate(queueName: string, concurrency: number) {
+    for (const [workerId, q] of workerQueues.entries()) {
+      if (q === queueName) {
+        await this.updateConcurrency(workerId, concurrency)
+      }
+    }
   },
 
   /**
@@ -87,13 +145,20 @@ export const workerService = {
   async pollAndProcess(queueName: string, workerId: string) {
     const redisKey = `queue:${queueName}`
 
-    // bzPopMin blocks until an element is available or timeout (1s)
-    const result = await redisClient.bzPopMin(redisKey, 1)
+    // Use non-blocking zPopMin to avoid locking the connection for other concurrent slots
+    const result = await redisClient.zPopMin(redisKey)
 
-    if (!result) return
+    if (!result) {
+      // Small sleep to avoid tight loop on empty queue
+      await new Promise(resolve => setTimeout(resolve, 500))
+      return
+    }
 
     const jobId = result.value
     console.log(`📦 Picked up job ${jobId} from ${queueName}`)
+
+    // Track in registry
+    await workerRegistry.setProcessing(workerId, jobId)
 
     let job: any
     let attemptId: string | number | undefined
@@ -200,9 +265,9 @@ export const workerService = {
         'UPDATE job_attempts SET status = \'completed\', finished_at = $1, execution_time_ms = $2 WHERE id = $3',
         [finishedAt, executionTimeMs, attemptId]
       )
-
-      workerRegistry.incrementProcessed(workerId)
-      workerRegistry.setIdle(workerId)
+      
+      await workerRegistry.incrementProcessed(workerId)
+      await workerRegistry.setIdle(workerId, jobId)
       console.log(`✅ Job ${jobId} completed successfully (Execution: ${executionTimeMs}ms, Latency: ${queueLatencyMs}ms)`)
 
       // Broadcast completion
@@ -261,7 +326,8 @@ export const workerService = {
         // Broadcast failure or retry
         redisClient.publish('pulsar:events', JSON.stringify({ type: 'job_update', job_id: jobId, status: newStatus, error: errorMessage }))
       }
-      workerRegistry.setIdle(workerId)
+      await workerRegistry.incrementFailed(workerId)
+      await workerRegistry.setIdle(workerId, jobId)
     }
   }
 }

@@ -5,6 +5,8 @@ import { pool } from './config/db.config.js'
 import { Server as SocketIOServer } from 'socket.io'
 import { createServer } from 'http'
 import { statsService } from './services/stats.service.js'
+import { autoscalerService } from './services/autoscaler.service.js'
+import { workerService } from './services/worker.service.js'
 
 const start = async () => {
   const port = parseInt(env.PORT, 10) || 3000
@@ -39,6 +41,15 @@ const start = async () => {
       }
     })
 
+    await pubSubClient.subscribe('pulsar:concurrency_update', async (message) => {
+      try {
+        const { queue_name, concurrency } = JSON.parse(message)
+        await workerService.handleConcurrencyUpdate(queue_name, concurrency)
+      } catch (err) {
+        console.error('❌ Error handling concurrency update on server:', err)
+      }
+    })
+
     // Client connection logging (Optional)
     io.on('connection', (socket) => {
       console.log(`🔌 Client connected: ${socket.id}`)
@@ -50,6 +61,9 @@ const start = async () => {
     const server = httpServer.listen(port, () => {
       console.log(`🚀 Server listening on port ${port} in ${env.NODE_ENV} mode`)
     })
+    
+    // Start Autoscaler Service
+    autoscalerService.start()
 
     // Graceful Shutdown
     const shutdown = async (signal: string) => {
@@ -57,6 +71,9 @@ const start = async () => {
 
       server.close(async () => {
         console.log('HTTP server closed')
+        
+        // Stop Autoscaler
+        autoscalerService.stop()
 
         // Close database pool
         await pool.end()

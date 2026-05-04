@@ -1,118 +1,159 @@
+import { redisClient } from '../config/redis.config.js'
 import { WorkerInfo } from '../types/worker.types.js'
 
-const workers: Map<string, WorkerInfo> = new Map()
+const REGISTRY_KEY = 'pulsar:workers'
+const WORKER_TTL = 30 // Seconds before a worker is considered stale
 
 /**
- * Tracks the in-memory state and heartbeat of all active Pulsar workers.
+ * Tracks the distributed state and heartbeat of all active Pulsar workers using Redis.
  */
 export const workerRegistry = {
   /**
-   * Registers a new worker node in the system.
-   * @param workerId Unique identifier of the worker.
-   * @param queueName The queue this worker is polling.
+   * Registers or updates a worker node in the shared Redis registry.
    */
-  register: (workerId: string, queueName: string): void => {
-    workers.set(workerId, {
+  register: async (workerId: string, queueName: string): Promise<void> => {
+    const existing = await workerRegistry.get(workerId)
+    const info = {
       worker_id: workerId,
       queue_name: queueName,
-      status: 'idle',
-      jobs_processed: 0,
-      jobs_failed: 0,
+      status: existing?.status || 'idle',
+      concurrency: existing?.concurrency || 1,
+      active_job_ids: existing?.active_job_ids || [],
+      jobs_processed: existing?.jobs_processed || 0,
+      jobs_failed: existing?.jobs_failed || 0,
       last_activity: new Date(),
-      started_at: new Date(),
-      current_job_id: null
-    })
+      started_at: existing?.started_at || new Date()
+    }
+    
+    await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(info))
   },
 
   /**
-   * Completely removes a worker from the tracked registry.
-   * @param workerId ID of the worker to remove.
+   * Completely removes a worker from the shared registry.
    */
-  unregister: (workerId: string): void => {
-    workers.delete(workerId)
+  unregister: async (workerId: string): Promise<void> => {
+    await redisClient.hDel(REGISTRY_KEY, workerId)
   },
 
   /**
    * Updates a worker's status to processing and links it to an active job.
-   * @param workerId ID of the active processing worker.
-   * @param jobId ID of the job being processed.
    */
-  setProcessing: (workerId: string, jobId: string): void => {
-    const w = workers.get(workerId)
+  setProcessing: async (workerId: string, jobId: string): Promise<void> => {
+    const w = await workerRegistry.get(workerId)
     if (w) {
       w.status = 'processing'
-      w.current_job_id = jobId
+      if (!w.active_job_ids.includes(jobId)) {
+        w.active_job_ids.push(jobId)
+      }
       w.last_activity = new Date()
+      await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
     }
   },
 
   /**
    * Reverts a worker's status to idle when awaiting jobs.
-   * @param workerId ID of the idle worker.
    */
-  setIdle: (workerId: string): void => {
-    const w = workers.get(workerId)
+  setIdle: async (workerId: string, jobId?: string): Promise<void> => {
+    const w = await workerRegistry.get(workerId)
     if (w) {
-      w.status = 'idle'
-      w.current_job_id = null
+      if (jobId) {
+        w.active_job_ids = w.active_job_ids.filter(id => id !== jobId)
+      } else {
+        w.active_job_ids = []
+      }
+      
+      if (w.active_job_ids.length === 0) {
+        w.status = 'idle'
+      }
       w.last_activity = new Date()
+      await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
     }
   },
 
   /**
    * Marks a worker as gracefully stopped.
-   * @param workerId ID of the stopped worker.
    */
-  setStopped: (workerId: string): void => {
-    const w = workers.get(workerId)
+  setStopped: async (workerId: string): Promise<void> => {
+    const w = await workerRegistry.get(workerId)
     if (w) {
       w.status = 'stopped'
-      w.current_job_id = null
+      w.active_job_ids = []
       w.last_activity = new Date()
+      await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
+    }
+  },
+
+  /**
+   * Updates the concurrency (job slots) for a worker in the registry.
+   */
+  updateConcurrency: async (workerId: string, concurrency: number): Promise<void> => {
+    const w = await workerRegistry.get(workerId)
+    if (w) {
+      w.concurrency = concurrency
+      w.last_activity = new Date()
+      await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
     }
   },
 
   /**
    * Increments the success processing counter for a worker.
-   * @param workerId ID of the respective worker.
    */
-  incrementProcessed: (workerId: string): void => {
-    const w = workers.get(workerId)
-    if (w) w.jobs_processed++
+  incrementProcessed: async (workerId: string): Promise<void> => {
+    const w = await workerRegistry.get(workerId)
+    if (w) {
+      w.jobs_processed++
+      await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
+    }
   },
 
   /**
    * Increments the failure processing counter for a worker.
-   * @param workerId ID of the respective worker.
    */
-  incrementFailed: (workerId: string): void => {
-    const w = workers.get(workerId)
-    if (w) w.jobs_failed++
+  incrementFailed: async (workerId: string): Promise<void> => {
+    const w = await workerRegistry.get(workerId)
+    if (w) {
+      w.jobs_failed++
+      await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
+    }
   },
 
   /**
-   * Retrieves specific state information about a worker.
-   * @param workerId ID of the worker.
-   * @returns Worker statistics or undefined.
+   * Retrieves specific state information about a worker from Redis.
    */
-  get: (workerId: string): WorkerInfo | undefined => {
-    return workers.get(workerId)
+  get: async (workerId: string): Promise<WorkerInfo | undefined> => {
+    const data = await redisClient.hGet(REGISTRY_KEY, workerId)
+    if (!data) return undefined
+    return JSON.parse(data)
   },
 
   /**
-   * Retrieves the comprehensive list of all known workers.
-   * @returns Array of WorkerInfo payloads.
+   * Retrieves the comprehensive list of all non-stale workers.
    */
-  getAll: (): WorkerInfo[] => {
-    return Array.from(workers.values())
+  getAll: async (): Promise<WorkerInfo[]> => {
+    const all = await redisClient.hGetAll(REGISTRY_KEY)
+    const now = new Date().getTime()
+    const workers: WorkerInfo[] = []
+    
+    for (const id in all) {
+      const w: WorkerInfo = JSON.parse(all[id])
+      const lastActivity = new Date(w.last_activity).getTime()
+      
+      // Filter out workers that haven't heartbeated in WORKER_TTL seconds
+      if (now - lastActivity < WORKER_TTL * 1000) {
+        workers.push(w)
+      } else {
+         // Cleanup stale workers asynchronously
+         redisClient.hDel(REGISTRY_KEY, id)
+      }
+    }
+    return workers
   },
 
   /**
-   * Validates if a worker is present in the registry.
-   * @param workerId ID of the worker.
-   * @returns boolean presence indicator.
+   * Returns true if worker ID exists and is active.
    */
-  has: (workerId: string): boolean => {
-    return workers.has(workerId)
+  has: async (workerId: string): Promise<boolean> => {
+    const w = await workerRegistry.get(workerId)
+    return !!w
   }
 }
