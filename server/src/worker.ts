@@ -20,6 +20,20 @@ const start = async () => {
 
     if (processType === 'worker' || processType === 'both') {
       workerService.start(env.QUEUE_NAME, env.WORKER_ID)
+
+      // Dynamic Concurrency Subscriber
+      const subClient = (await import('./config/redis.config.js')).redisClient.duplicate()
+      await subClient.connect()
+      await subClient.subscribe('pulsar:concurrency_update', (message) => {
+        try {
+          const { queue_name, concurrency } = JSON.parse(message)
+          if (queue_name === env.QUEUE_NAME) {
+            workerService.updateConcurrency(env.WORKER_ID, concurrency)
+          }
+        } catch (err) {
+          console.error('❌ Error handling concurrency update:', err)
+        }
+      })
     }
 
     // Graceful Shutdown

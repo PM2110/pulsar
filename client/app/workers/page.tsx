@@ -7,11 +7,12 @@ interface WorkerInfo {
   worker_id: string;
   queue_name: string;
   status: "idle" | "processing" | "stopped";
+  concurrency: number;
+  active_job_ids: string[];
   jobs_processed: number;
   jobs_failed: number;
   last_activity: string;
   started_at: string;
-  current_job_id: string | null;
 }
 
 const QUEUES = ["notifications", "media", "default"];
@@ -80,7 +81,7 @@ function WorkerPod({
         {[
           { label: "Processed", value: worker.jobs_processed, color: "var(--completed)" },
           { label: "Failed", value: worker.jobs_failed, color: "var(--failed)" },
-          { label: "Active", value: worker.status === "processing" ? "Yes" : "No", color: worker.status === "processing" ? "var(--processing)" : "var(--text-muted)" },
+          { label: "Slots (Cap)", value: `${worker.active_job_ids.length}/${worker.concurrency}`, color: "var(--processing)" },
         ].map((s) => (
           <div
             key={s.label}
@@ -92,13 +93,13 @@ function WorkerPod({
             }}
           >
             <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 2 }}>{s.label}</div>
-            <div style={{ fontSize: 15, fontWeight: 700, color: s.color }}>{s.value}</div>
+            <div style={{ fontSize: 13, fontWeight: 700, color: s.color }}>{s.value}</div>
           </div>
         ))}
       </div>
 
-      {/* Current job */}
-      {worker.current_job_id && (
+      {/* Active jobs list */}
+      {worker.active_job_ids.length > 0 && (
         <div
           style={{
             background: "rgba(226,232,240,0.05)",
@@ -106,13 +107,18 @@ function WorkerPod({
             borderRadius: 7,
             padding: "8px 10px",
             marginBottom: 12,
-            fontSize: 11,
+            maxHeight: 100,
+            overflowY: "auto"
           }}
         >
-          <span style={{ color: "var(--text-muted)" }}>Processing: </span>
-          <span style={{ fontFamily: "monospace", color: "var(--processing)" }}>
-            #{worker.current_job_id}
-          </span>
+          <div style={{ fontSize: 9, color: "var(--text-muted)", textTransform: "uppercase", marginBottom: 6, letterSpacing: "0.05em" }}>Active Jobs</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {worker.active_job_ids.map(id => (
+              <span key={id} style={{ fontFamily: "monospace", color: "var(--processing)", fontSize: 11, background: "rgba(74,222,128,0.1)", padding: "1px 5px", borderRadius: 3 }}>
+                #{id}
+              </span>
+            ))}
+          </div>
         </div>
       )}
 
@@ -428,15 +434,15 @@ export default function WorkersPage() {
                   {conf.enabled && (
                     <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <label style={{ fontSize: 11, color: "var(--text-muted)" }}>Min Workers: {conf.minWorkers}</label>
+                        <label style={{ fontSize: 11, color: "var(--text-muted)" }}>Min Concurrency: {conf.minWorkers}</label>
                         <input type="range" min={0} max={10} value={conf.minWorkers} onChange={(e) => handleUpdateScale(q, { ...conf, minWorkers: Number(e.target.value) })} disabled={savingScale} style={{ width: 100 }} />
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <label style={{ fontSize: 11, color: "var(--text-muted)" }}>Max Workers: {conf.maxWorkers}</label>
-                        <input type="range" min={1} max={20} value={conf.maxWorkers} onChange={(e) => handleUpdateScale(q, { ...conf, maxWorkers: Number(e.target.value) })} disabled={savingScale} style={{ width: 100 }} />
+                        <label style={{ fontSize: 11, color: "var(--text-muted)" }}>Max Concurrency: {conf.maxWorkers}</label>
+                        <input type="range" min={1} max={50} value={conf.maxWorkers} onChange={(e) => handleUpdateScale(q, { ...conf, maxWorkers: Number(e.target.value) })} disabled={savingScale} style={{ width: 100 }} />
                       </div>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                        <label style={{ fontSize: 11, color: "var(--text-muted)" }}>Threshold: {conf.threshold} / worker</label>
+                        <label style={{ fontSize: 11, color: "var(--text-muted)" }}>Threshold: {conf.threshold} / slot</label>
                         <input type="range" min={1} max={50} value={conf.threshold} onChange={(e) => handleUpdateScale(q, { ...conf, threshold: Number(e.target.value) })} disabled={savingScale} style={{ width: 100 }} />
                       </div>
                     </div>

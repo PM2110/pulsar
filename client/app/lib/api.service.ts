@@ -73,16 +73,6 @@ export const apiService = {
   getAbsoluteUrl: (path: string) => {
     const cleanPath = path.startsWith('/') ? path : `/${path}`;
     return `${API_BASE_URL}${cleanPath}`;
-  },
-
-  // Autoscaler
-  getAutoscalerConfig: async () => {
-    const response = await api.get('/api/workers/autoscaler');
-    return response.data;
-  },
-  updateAutoscalerConfig: async (configData: any) => {
-    const response = await api.post('/api/workers/autoscaler', configData);
-    return response.data;
   }
 };
 

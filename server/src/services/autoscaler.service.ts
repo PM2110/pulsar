@@ -59,31 +59,31 @@ class AutoscalerService {
 
       try {
         const queueDepth = await redisClient.zCard(`queue:${queueName}`)
-
-        // Count active workers for this queue (Processing or Idle, not Stopped)
+        
+        // Count active workers for this queue
         const allWorkers = workerRegistry.getAll()
         const activeWorkersForQueue = allWorkers.filter(w => w.queue_name === queueName && w.status !== 'stopped')
         const activeCount = activeWorkersForQueue.length
 
-        // Scale Up Logic
-        if (activeCount < conf.maxWorkers) {
-          if (activeCount < conf.minWorkers || queueDepth > (activeCount * conf.threshold)) {
-            const workerId = `worker-${queueName}-${randomBytes(4).toString('hex')}`
-            console.log(`📈 Auto-scaling UP: Queue '${queueName}' has ${queueDepth} jobs, ${activeCount} workers. Starting new worker '${workerId}'.`)
-            workerService.startInstance(queueName, workerId)
-          }
-        }
+        if (activeCount === 0) continue
 
-        // Scale Down Logic
-        if (activeCount > conf.minWorkers && queueDepth === 0) {
-          // Find an idle worker to stop
-          const idleWorker = activeWorkersForQueue.find(w => w.status === 'idle')
-          if (idleWorker) {
-            console.log(`📉 Auto-scaling DOWN: Queue '${queueName}' has 0 jobs, ${activeCount} workers. Stopping worker '${idleWorker.worker_id}'.`)
-            workerService.stopInstance(idleWorker.worker_id)
-            workerRegistry.setStopped(idleWorker.worker_id)
-          }
-        }
+        // Calculate target TOTAL concurrency for the queue
+        // e.g. if depth is 20 and threshold is 5, we want 4 slots total.
+        let targetTotalConcurrency = Math.ceil(queueDepth / conf.threshold)
+        
+        // Clamp between min and max (these now represent total slots for the queue)
+        targetTotalConcurrency = Math.max(conf.minWorkers, Math.min(conf.maxWorkers, targetTotalConcurrency))
+
+        // Divide total capacity among active workers
+        const concurrencyPerWorker = Math.ceil(targetTotalConcurrency / activeCount)
+
+        console.log(`📈 Autoscaler [${queueName}]: Depth=${queueDepth}, ActiveWorkers=${activeCount}, TargetTotal=${targetTotalConcurrency}, PerWorker=${concurrencyPerWorker}`)
+
+        // Broadcast the new concurrency target for this queue
+        redisClient.publish('pulsar:concurrency_update', JSON.stringify({
+          queue_name: queueName,
+          concurrency: concurrencyPerWorker
+        }))
       } catch (err) {
         console.error(`❌ Autoscaler error on queue '${queueName}':`, err)
       }

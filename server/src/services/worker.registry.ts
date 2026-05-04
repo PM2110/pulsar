@@ -16,11 +16,12 @@ export const workerRegistry = {
       worker_id: workerId,
       queue_name: queueName,
       status: 'idle',
+      concurrency: 1,
+      active_job_ids: [],
       jobs_processed: 0,
       jobs_failed: 0,
       last_activity: new Date(),
-      started_at: new Date(),
-      current_job_id: null
+      started_at: new Date()
     })
   },
 
@@ -41,7 +42,9 @@ export const workerRegistry = {
     const w = workers.get(workerId)
     if (w) {
       w.status = 'processing'
-      w.current_job_id = jobId
+      if (!w.active_job_ids.includes(jobId)) {
+        w.active_job_ids.push(jobId)
+      }
       w.last_activity = new Date()
     }
   },
@@ -49,12 +52,20 @@ export const workerRegistry = {
   /**
    * Reverts a worker's status to idle when awaiting jobs.
    * @param workerId ID of the idle worker.
+   * @param jobId Optional ID of the job that finished.
    */
-  setIdle: (workerId: string): void => {
+  setIdle: (workerId: string, jobId?: string): void => {
     const w = workers.get(workerId)
     if (w) {
-      w.status = 'idle'
-      w.current_job_id = null
+      if (jobId) {
+        w.active_job_ids = w.active_job_ids.filter(id => id !== jobId)
+      } else {
+        w.active_job_ids = []
+      }
+
+      if (w.active_job_ids.length === 0) {
+        w.status = 'idle'
+      }
       w.last_activity = new Date()
     }
   },
@@ -67,7 +78,20 @@ export const workerRegistry = {
     const w = workers.get(workerId)
     if (w) {
       w.status = 'stopped'
-      w.current_job_id = null
+      w.active_job_ids = []
+      w.last_activity = new Date()
+    }
+  },
+
+  /**
+   * Updates the concurrency (job slots) for a worker.
+   * @param workerId ID of the worker.
+   * @param concurrency New concurrency level.
+   */
+  updateConcurrency: (workerId: string, concurrency: number): void => {
+    const w = workers.get(workerId)
+    if (w) {
+      w.concurrency = concurrency
       w.last_activity = new Date()
     }
   },

@@ -8,8 +8,10 @@ import { workerRegistry } from './worker.registry.js'
 /**
  * Service to handle worker logic: polling Redis and processing jobs.
  */
-// Track running state per worker instance
+// Track running state and concurrency per worker instance
 const runningInstances: Map<string, boolean> = new Map()
+const instanceConcurrency: Map<string, number> = new Map()
+const activeTasks: Map<string, Set<Promise<void>>> = new Map()
 
 export const workerService = {
   isRunning: false,
@@ -20,12 +22,25 @@ export const workerService = {
   async start(queueName: string = DEFAULT_QUEUE, workerId: string = 'worker-1') {
     if (this.isRunning) return
     this.isRunning = true
+    instanceConcurrency.set(workerId, 1)
+    activeTasks.set(workerId, new Set())
+    
     workerRegistry.register(workerId, queueName)
-    console.log(`🚀 Worker started polling queue: ${queueName}`)
+    console.log(`🚀 Worker started polling queue: ${queueName} with concurrency: 1`)
 
     while (this.isRunning) {
       try {
-        await this.pollAndProcess(queueName, workerId)
+        const concurrency = instanceConcurrency.get(workerId) || 1
+        const tasks = activeTasks.get(workerId)!
+
+        if (tasks.size < concurrency) {
+          const taskPromise = this.pollAndProcess(queueName, workerId)
+          tasks.add(taskPromise)
+          taskPromise.finally(() => tasks.delete(taskPromise))
+        } else {
+          // At capacity, wait a bit before checking again
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
       } catch (error) {
         console.error('❌ Worker loop error:', error)
         await new Promise(resolve => setTimeout(resolve, 5000))
@@ -39,12 +54,24 @@ export const workerService = {
    */
   async startInstance(queueName: string, workerId: string) {
     runningInstances.set(workerId, true)
+    instanceConcurrency.set(workerId, 1)
+    activeTasks.set(workerId, new Set())
+
     workerRegistry.register(workerId, queueName)
-    console.log(`🚀 Worker instance '${workerId}' started on queue: ${queueName}`)
+    console.log(`🚀 Worker instance '${workerId}' started on queue: ${queueName} with concurrency: 1`)
 
     while (runningInstances.get(workerId)) {
       try {
-        await this.pollAndProcess(queueName, workerId)
+        const concurrency = instanceConcurrency.get(workerId) || 1
+        const tasks = activeTasks.get(workerId)!
+
+        if (tasks.size < concurrency) {
+          const taskPromise = this.pollAndProcess(queueName, workerId)
+          tasks.add(taskPromise)
+          taskPromise.finally(() => tasks.delete(taskPromise))
+        } else {
+          await new Promise(resolve => setTimeout(resolve, 100))
+        }
       } catch (error) {
         console.error(`❌ Worker instance '${workerId}' error:`, error)
         await new Promise(resolve => setTimeout(resolve, 5000))
@@ -52,6 +79,15 @@ export const workerService = {
     }
     workerRegistry.setStopped(workerId)
     console.log(`🛑 Worker instance '${workerId}' stopped.`)
+  },
+
+  /**
+   * Dynamically updates the concurrency for a specific worker instance.
+   */
+  updateConcurrency(workerId: string, concurrency: number) {
+    console.log(`📈 Updating concurrency for worker '${workerId}' to ${concurrency}`)
+    instanceConcurrency.set(workerId, concurrency)
+    workerRegistry.updateConcurrency(workerId, concurrency)
   },
 
   /**
@@ -202,7 +238,7 @@ export const workerService = {
       )
 
       workerRegistry.incrementProcessed(workerId)
-      workerRegistry.setIdle(workerId)
+      workerRegistry.setIdle(workerId, jobId)
       console.log(`✅ Job ${jobId} completed successfully (Execution: ${executionTimeMs}ms, Latency: ${queueLatencyMs}ms)`)
 
       // Broadcast completion
@@ -261,7 +297,7 @@ export const workerService = {
         // Broadcast failure or retry
         redisClient.publish('pulsar:events', JSON.stringify({ type: 'job_update', job_id: jobId, status: newStatus, error: errorMessage }))
       }
-      workerRegistry.setIdle(workerId)
+      workerRegistry.setIdle(workerId, jobId)
     }
   }
 }
