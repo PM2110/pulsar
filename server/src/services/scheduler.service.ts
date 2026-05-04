@@ -9,6 +9,7 @@ export const schedulerService = {
   isRunning: false,
   lastReaperRun: 0,
   lastAgingRun: 0,
+  lastRecoveryRun: 0,
 
   /**
    * Starts the polling background scheduler loop.
@@ -40,6 +41,14 @@ export const schedulerService = {
         if (now - this.lastAgingRun > 30000) {
           await queueService.applyPriorityAging(queueName)
           this.lastAgingRun = now
+        }
+        
+        // 4. Run Crash Recovery (Low Frequency - every 60s)
+        // Scans for stale heartbeats and recovers orphaned jobs.
+        if (now - this.lastRecoveryRun > 60000) {
+          const { workerRegistry } = await import('./worker.registry.js')
+          await workerRegistry.recoverStaleWorkers(queueService)
+          this.lastRecoveryRun = now
         }
 
         // 4. Promote ready jobs and get wait time until next job

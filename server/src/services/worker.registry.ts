@@ -150,6 +150,77 @@ export const workerRegistry = {
   },
 
   /**
+   * Internal logic to identify and recover jobs from stale workers.
+   * Called periodically by the scheduler's Death Watch.
+   */
+  recoverStaleWorkers: async (queueService: any): Promise<number> => {
+    const all = await redisClient.hGetAll(REGISTRY_KEY)
+    const now = new Date().getTime()
+    let recoveredCount = 0
+    
+    for (const id in all) {
+      const w: WorkerInfo = JSON.parse(all[id])
+      const lastActivity = new Date(w.last_activity).getTime()
+      
+      // If worker hasn't heartbeated in WORKER_TTL seconds
+      if (now - lastActivity >= WORKER_TTL * 1000) {
+        console.log(`🕵️ Recovery: Worker ${id} is stale. Cleaning up...`)
+
+        // 1. Recover any jobs the worker was processing
+        if (w.active_job_ids && w.active_job_ids.length > 0) {
+          console.log(`♻️ Recovery: Re-enqueuing ${w.active_job_ids.length} jobs from crashed worker ${id}`)
+          
+          for (const jobId of w.active_job_ids) {
+            try {
+              // Mark as pending in DB
+              const { query } = await import('../config/db.config.js')
+              await query(
+                `UPDATE jobs 
+                 SET status = 'pending', 
+                     updated_at = NOW(), 
+                     last_error = 'Worker crash recovery triggered.'
+                 WHERE id = $1 AND status = 'processing'`,
+                [jobId]
+              )
+
+              // Add a failed attempt log entry for tracking
+              await query(
+                `INSERT INTO job_attempts (job_id, attempt_number, status, error, worker_id)
+                 SELECT id, attempts, 'failed', 'Worker crashed during execution', $2
+                 FROM jobs WHERE id = $1`,
+                [jobId, id]
+              )
+
+              // Re-enqueue in Redis
+              const jobResult = await query('SELECT priority FROM jobs WHERE id = $1', [jobId])
+              if (jobResult.rows.length > 0) {
+                await queueService.enqueueJob(w.queue_name, jobId, jobResult.rows[0].priority)
+                recoveredCount++
+              }
+            } catch (err) {
+              console.error(`❌ Recovery: Failed to recover job ${jobId}:`, err)
+            }
+          }
+        }
+
+        // 2. Self-Healing: If it was an API-started worker, notify for re-start
+        // We can publish to a special internal channel or handle it here if it's the same process
+        if (w.worker_id.startsWith('api-')) {
+          console.log(`🛠️ Self-Healing: Signaling restart for persistent API worker ${id}`)
+          redisClient.publish('pulsar:worker_restart', JSON.stringify({ 
+            worker_id: w.worker_id, 
+            queue_name: w.queue_name 
+          }))
+        }
+
+        // 3. Remove stale worker from registry
+        await redisClient.hDel(REGISTRY_KEY, id)
+      }
+    }
+    return recoveredCount
+  },
+
+  /**
    * Returns true if worker ID exists and is active.
    */
   has: async (workerId: string): Promise<boolean> => {
