@@ -6,6 +6,7 @@ import { Server as SocketIOServer } from 'socket.io'
 import { createServer } from 'http'
 import { statsService } from './services/stats.service.js'
 import { autoscalerService } from './services/autoscaler.service.js'
+import { workerService } from './services/worker.service.js'
 
 const start = async () => {
   const port = parseInt(env.PORT, 10) || 3000
@@ -37,6 +38,15 @@ const start = async () => {
         io.emit('stats_update', stats)
       } catch (err) {
         console.error('Error broadcasting websocket events:', err)
+      }
+    })
+
+    await pubSubClient.subscribe('pulsar:concurrency_update', async (message) => {
+      try {
+        const { queue_name, concurrency } = JSON.parse(message)
+        await workerService.handleConcurrencyUpdate(queue_name, concurrency)
+      } catch (err) {
+        console.error('❌ Error handling concurrency update on server:', err)
       }
     })
 

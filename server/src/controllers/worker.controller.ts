@@ -13,8 +13,8 @@ export const workerController = {
   /**
    * Restful fetch interface for surfacing all workers.
    */
-  getWorkers: (req: Request, res: Response) => {
-    const workers = workerRegistry.getAll()
+  getWorkers: async (req: Request, res: Response) => {
+    const workers = await workerRegistry.getAll()
     res.json({ workers })
   },
 
@@ -29,7 +29,7 @@ export const workerController = {
         return res.status(409).json({ error: `Worker '${worker_id}' is already running` })
       }
 
-      workerRegistry.register(worker_id, queue_name)
+      await workerRegistry.register(worker_id, queue_name)
       runningWorkers.set(worker_id, true)
       workerService.startInstance(queue_name, worker_id)
 
@@ -47,7 +47,7 @@ export const workerController = {
       const { worker_id } = req.body
 
       workerService.stopInstance(worker_id)
-      workerRegistry.setStopped(worker_id)
+      await workerRegistry.setStopped(worker_id)
       runningWorkers.delete(worker_id)
 
       res.json({ message: `Worker '${worker_id}' stopped` })

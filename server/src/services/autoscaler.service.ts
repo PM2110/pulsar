@@ -61,7 +61,7 @@ class AutoscalerService {
         const queueDepth = await redisClient.zCard(`queue:${queueName}`)
         
         // Count active workers for this queue
-        const allWorkers = workerRegistry.getAll()
+        const allWorkers = await workerRegistry.getAll()
         const activeWorkersForQueue = allWorkers.filter(w => w.queue_name === queueName && w.status !== 'stopped')
         const activeCount = activeWorkersForQueue.length
 
