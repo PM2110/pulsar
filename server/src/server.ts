@@ -33,13 +33,21 @@ const start = async () => {
       try {
         const eventData = JSON.parse(message)
         io.emit('job_update', eventData)
-        
-        const stats = await statsService.getStats()
-        io.emit('stats_update', stats)
       } catch (err) {
         console.error('Error broadcasting websocket events:', err)
       }
     })
+
+    // Securely aggregate metrics and broadcast stats on an independent loop
+    // preventing Postgres DDOS spirals when high job volumes flow.
+    setInterval(async () => {
+      try {
+        const stats = await statsService.getStats()
+        io.emit('stats_update', stats)
+      } catch (err) {
+        console.error('Error broadcasting stats update:', err)
+      }
+    }, 2000)
 
     await pubSubClient.subscribe('pulsar:concurrency_update', async (message) => {
       try {

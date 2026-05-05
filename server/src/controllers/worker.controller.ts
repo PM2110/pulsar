@@ -26,18 +26,16 @@ export const workerController = {
     try {
       let { queue_name = 'default', worker_id, auto_restart = false } = req.body
 
-      // Ensure API-started workers have the correct prefix for self-healing
-      if (!worker_id.startsWith('api-')) {
-        worker_id = `api-${worker_id}`
-      }
-
-      if (runningWorkers.get(worker_id)) {
-        return res.status(409).json({ error: `Worker '${worker_id}' is already running` })
-      }
-
+      // If it's a standalone node rather than an API node, broadcast start remotely.
+      // API nodes self-heal natively here.
       await workerRegistry.register(worker_id, queue_name, auto_restart)
-      runningWorkers.set(worker_id, true)
-      workerService.startInstance(queue_name, worker_id)
+      
+      if (!worker_id.startsWith('api-')) {
+        redisClient.publish('pulsar:worker_control', JSON.stringify({ action: 'start', worker_id, queue_name }))
+      } else {
+        runningWorkers.set(worker_id, true)
+        workerService.startInstance(queue_name, worker_id)
+      }
 
       redisClient.publish('pulsar:events', JSON.stringify({ type: 'worker_update', worker_id }))
 
@@ -100,8 +98,9 @@ export const workerController = {
       redisClient.publish('pulsar:worker_control', JSON.stringify({ action: 'crash', worker_id }))
       runningWorkers.delete(worker_id)
       
-      // DO NOT update the registry here. 
-      // This will cause the worker to eventually appear stale and trigger recovery.
+      // Execute immediate job recovery to simulate crash side-effects properly synced with UI
+      const { queueService } = await import('../services/queue.service.js')
+      await workerRegistry.recoverWorker(worker_id, queueService)
       
       redisClient.publish('pulsar:events', JSON.stringify({ type: 'worker_update', worker_id }))
 

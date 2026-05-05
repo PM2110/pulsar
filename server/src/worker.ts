@@ -45,11 +45,12 @@ const start = async () => {
             if (action === 'stop') {
               console.log(`🛑 Received stop signal via PubSub for worker ${worker_id}`)
               workerService.stop()
+            } else if (action === 'start') {
+              console.log(`🚀 Received start signal via PubSub for worker ${worker_id}`)
+              workerService.start(env.QUEUE_NAME, uniqueWorkerId)
             } else if (action === 'crash') {
-              console.log(`☠ Received crash signal via PubSub for worker ${worker_id}. Exiting process to simulate crash.`)
-              workerService.crashInstance(worker_id)
+              console.log(`☠ Received crash signal via PubSub for worker ${worker_id}. Simulating crash by pausing worker loop instead of exiting, so UI Start button works.`)
               workerService.stop()
-              setTimeout(() => process.exit(1), 100) // Let registry finish processing
             }
           }
         } catch (err) {

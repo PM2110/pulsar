@@ -44,6 +44,7 @@ function WorkerPod({
   now: number;
 }) {
   const [showStopOptions, setShowStopOptions] = useState(false);
+  const [isCrashing, setIsCrashing] = useState(false);
   const isStale = now - new Date(worker.last_activity).getTime() > 40000 && worker.status !== "stopped";
   const cfg = STATUS_CONFIG[worker.status] || STATUS_CONFIG.stopped;
 
@@ -112,7 +113,7 @@ function WorkerPod({
 
       {/* Progress */}
       <div style={{ marginBottom: 16 }}>
-        <div style={{ height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2, overflow: "hidden", display: "flex" }}>
+        <div style={{ height: 4, background: "rgba(255,255,255,0.05)", borderRadius: 2, overflow: "hidden", display: "flex", marginBottom: 8 }}>
           {Array.from({ length: worker.concurrency }).map((_, i) => (
             <div key={i} style={{
               flex: 1, marginRight: i === worker.concurrency - 1 ? 0 : 1,
@@ -120,6 +121,20 @@ function WorkerPod({
             }} />
           ))}
         </div>
+        
+        {worker.active_job_ids && worker.active_job_ids.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 8 }}>
+            {worker.active_job_ids.map(id => (
+              <span key={id} style={{ 
+                fontSize: 9, fontFamily: "monospace", color: "var(--text-muted)", 
+                background: "rgba(255,255,255,0.04)", padding: "2px 6px", borderRadius: 4,
+                border: "1px solid rgba(255,255,255,0.08)"
+              }}>
+                {id.substring(0, 8)}
+              </span>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Footer */}
@@ -130,8 +145,20 @@ function WorkerPod({
         <div style={{ display: "flex", gap: 6 }}>
           {worker.status !== "stopped" ? (
             <>
-              <button className="btn btn-secondary" style={{ padding: "4px 8px", fontSize: 10, color: "var(--failed)" }} onClick={() => onCrash(worker.worker_id)}>
-                Crash
+              <button
+                className="btn btn-secondary"
+                style={{ padding: "4px 8px", fontSize: 10, color: "var(--failed)", opacity: isCrashing ? 0.7 : 1, cursor: isCrashing ? 'wait' : 'pointer' }}
+                disabled={isCrashing}
+                onClick={async () => {
+                  setIsCrashing(true);
+                  try {
+                    await onCrash(worker.worker_id);
+                  } finally {
+                    setIsCrashing(false);
+                  }
+                }}
+              >
+                {isCrashing ? "Crashing..." : "Crash"}
               </button>
               <div style={{ position: "relative" }}>
                 <button className="btn btn-danger" style={{ padding: "4px 10px", fontSize: 10 }} onClick={() => setShowStopOptions(!showStopOptions)}>
@@ -170,7 +197,7 @@ function WorkerPod({
 
 export default function WorkersPage() {
   const [workers, setWorkers] = useState<WorkerInfo[]>([]);
-  const [newWorker, setNewWorker] = useState({ queue_name: "notifications", worker_id: "", auto_restart: true });
+  const [newWorker, setNewWorker] = useState({ queue_name: "notifications", worker_id: "api-node-01", auto_restart: true });
   const [starting, setStarting] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
   const [seedForm, setSeedForm] = useState({ count: 5, queue_name: "", failure_mode: "" });
@@ -196,11 +223,9 @@ export default function WorkersPage() {
 
   useEffect(() => {
     const handleUpdate = () => fetchWorkers();
-    socket.on("job_update", handleUpdate);
     socket.on("stats_update", handleUpdate);
     socket.on("worker_update", handleUpdate);
     return () => {
-      socket.off("job_update", handleUpdate);
       socket.off("stats_update", handleUpdate);
       socket.off("worker_update", handleUpdate);
     };
