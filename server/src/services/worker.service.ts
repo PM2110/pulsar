@@ -13,6 +13,7 @@ const runningInstances: Map<string, boolean> = new Map()
 const instanceConcurrency: Map<string, number> = new Map()
 const activeTasks: Map<string, Set<Promise<void>>> = new Map()
 const workerQueues: Map<string, string> = new Map() // Tracks workerId -> queueName
+const crashedInstances: Set<string> = new Set()
 
 export const workerService = {
   isRunning: false,
@@ -60,6 +61,7 @@ export const workerService = {
    */
   async startInstance(queueName: string, workerId: string) {
     runningInstances.set(workerId, true)
+    crashedInstances.delete(workerId) // Reset crash state
     instanceConcurrency.set(workerId, 1)
     workerQueues.set(workerId, queueName)
     activeTasks.set(workerId, new Set())
@@ -87,9 +89,16 @@ export const workerService = {
       }
     }
     clearInterval(heartbeat)
-    await workerRegistry.setStopped(workerId)
+
+    // Skip registry cleanup if this was an intentional "crash"
+    if (!crashedInstances.has(workerId)) {
+      await workerRegistry.setStopped(workerId)
+      console.log(`🛑 Worker instance '${workerId}' stopped gracefully.`)
+    } else {
+      console.log(`☠ Worker instance '${workerId}' exited silently (Simulation).`)
+    }
+    
     workerQueues.delete(workerId)
-    console.log(`🛑 Worker instance '${workerId}' stopped.`)
   },
 
   /**
@@ -118,6 +127,15 @@ export const workerService = {
   stopInstance(workerId: string) {
     runningInstances.set(workerId, false)
     console.log(`🛑 Worker instance '${workerId}' stopping...`)
+  },
+
+  /**
+   * Simulates a worker crash by stopping the loop without cleaning up the registry.
+   */
+  crashInstance(workerId: string) {
+    crashedInstances.add(workerId)
+    runningInstances.set(workerId, false)
+    console.log(`☠ Worker instance '${workerId}' crashing...`)
   },
 
   /**

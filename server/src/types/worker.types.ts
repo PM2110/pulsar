@@ -7,6 +7,8 @@ export interface WorkerInfo {
   jobs_processed: number
   jobs_failed: number
   last_activity: Date
+  auto_restart: boolean
+  restart_at?: Date
   started_at: Date
 }
 

@@ -47,7 +47,7 @@ export const jobController = {
       ]
 
       const result = await client.query(insertQuery, values)
-      
+
       let jobToEnqueue;
       let isNew = true;
 
@@ -71,9 +71,9 @@ export const jobController = {
       }
 
       await client.query('COMMIT')
-      res.status(isNew ? 201 : 200).json({ 
-        message: isNew ? 'Job created successfully' : 'Idempotent request: Job already exists', 
-        job: jobToEnqueue 
+      res.status(isNew ? 201 : 200).json({
+        message: isNew ? 'Job created successfully' : 'Idempotent request: Job already exists',
+        job: jobToEnqueue
       })
     } catch (err) {
       if (client) await client.query('ROLLBACK')
@@ -215,7 +215,7 @@ export const jobController = {
     let client;
     try {
       const id = req.params.id as string
-      
+
       client = await getClient()
       await client.query('BEGIN')
 
@@ -225,7 +225,7 @@ export const jobController = {
         client.release()
         return res.status(404).json({ error: 'Job not found' })
       }
-      
+
       const job = jobResult.rows[0]
       await client.query('DELETE FROM jobs WHERE id = $1', [id])
       if (job.status === 'pending') await queueService.removeFromQueue(job.queue_name, id)
@@ -276,7 +276,7 @@ export const jobController = {
       const updatedJob = updatedResult.rows[0]
 
       await queueService.enqueueJob(updatedJob.queue_name, id, updatedJob.priority)
-      
+
       await client.query('COMMIT')
       res.json({ message: 'Job retried successfully', job: updatedJob })
     } catch (err) {

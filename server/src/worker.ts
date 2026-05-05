@@ -25,15 +25,35 @@ const start = async () => {
     }
 
     if (processType === 'worker' || processType === 'both') {
-      // Dynamic Concurrency Subscriber
+      // Dynamic Concurrency & Control Subscriber
       const subClient = redisClient.duplicate()
       await subClient.connect()
+      
       await subClient.subscribe('pulsar:concurrency_update', async (message) => {
         try {
           const { queue_name, concurrency } = JSON.parse(message)
           await workerService.handleConcurrencyUpdate(queue_name, concurrency)
         } catch (err) {
           console.error('❌ Error handling concurrency update:', err)
+        }
+      })
+
+      await subClient.subscribe('pulsar:worker_control', async (message) => {
+        try {
+          const { action, worker_id } = JSON.parse(message)
+          if (worker_id === uniqueWorkerId) {
+            if (action === 'stop') {
+              console.log(`🛑 Received stop signal via PubSub for worker ${worker_id}`)
+              workerService.stop()
+            } else if (action === 'crash') {
+              console.log(`☠ Received crash signal via PubSub for worker ${worker_id}. Exiting process to simulate crash.`)
+              workerService.crashInstance(worker_id)
+              workerService.stop()
+              setTimeout(() => process.exit(1), 100) // Let registry finish processing
+            }
+          }
+        } catch (err) {
+          console.error('❌ Error handling worker control event:', err)
         }
       })
 

@@ -60,6 +60,19 @@ const start = async () => {
       }
     })
 
+    await pubSubClient.subscribe('pulsar:worker_control', async (message) => {
+      try {
+        const { action, worker_id } = JSON.parse(message)
+        if (action === 'stop') {
+          workerService.stopInstance(worker_id)
+        } else if (action === 'crash') {
+          workerService.crashInstance(worker_id)
+        }
+      } catch (err) {
+        console.error('❌ Error handling worker control event on server:', err)
+      }
+    })
+
     // Client connection logging (Optional)
     io.on('connection', (socket) => {
       console.log(`🔌 Client connected: ${socket.id}`)

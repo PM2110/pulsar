@@ -11,7 +11,7 @@ export const workerRegistry = {
   /**
    * Registers or updates a worker node in the shared Redis registry.
    */
-  register: async (workerId: string, queueName: string): Promise<void> => {
+  register: async (workerId: string, queueName: string, autoRestart: boolean = false): Promise<void> => {
     const existing = await workerRegistry.get(workerId)
     const info = {
       worker_id: workerId,
@@ -21,6 +21,7 @@ export const workerRegistry = {
       active_job_ids: existing?.active_job_ids || [],
       jobs_processed: existing?.jobs_processed || 0,
       jobs_failed: existing?.jobs_failed || 0,
+      auto_restart: autoRestart,
       last_activity: new Date(),
       started_at: existing?.started_at || new Date()
     }
@@ -73,11 +74,28 @@ export const workerRegistry = {
   /**
    * Marks a worker as gracefully stopped.
    */
-  setStopped: async (workerId: string): Promise<void> => {
+  setStopped: async (workerId: string, autoRestart?: boolean): Promise<void> => {
     const w = await workerRegistry.get(workerId)
     if (w) {
       w.status = 'stopped'
       w.active_job_ids = []
+      if (autoRestart !== undefined) {
+        w.auto_restart = autoRestart
+      }
+      w.last_activity = new Date()
+      await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
+    }
+  },
+
+  /**
+   * Schedules a worker restart at a specific time.
+   */
+  setRestartAt: async (workerId: string, restartAt: Date): Promise<void> => {
+    const w = await workerRegistry.get(workerId)
+    if (w) {
+      w.status = 'stopped'
+      w.restart_at = restartAt
+      w.auto_restart = true
       w.last_activity = new Date()
       await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
     }
@@ -138,12 +156,12 @@ export const workerRegistry = {
       const w: WorkerInfo = JSON.parse(all[id])
       const lastActivity = new Date(w.last_activity).getTime()
       
-      // Filter out workers that haven't heartbeated in WORKER_TTL seconds
+      // Only filter out definitely stale workers, leave cleanup to recoverStaleWorkers
       if (now - lastActivity < WORKER_TTL * 1000) {
         workers.push(w)
-      } else {
-         // Cleanup stale workers asynchronously
-         redisClient.hDel(REGISTRY_KEY, id)
+      } else if (w.status === 'stopped' && (w.restart_at || w.auto_restart)) {
+        // Keep stopped workers in the list even if "stale" so they can be resumed/restarted
+        workers.push(w)
       }
     }
     return workers
@@ -162,8 +180,35 @@ export const workerRegistry = {
       const w: WorkerInfo = JSON.parse(all[id])
       const lastActivity = new Date(w.last_activity).getTime()
       
-      // If worker hasn't heartbeated in WORKER_TTL seconds
+      // A. Handle timed re-starts
+      if (w.status === 'stopped' && w.restart_at) {
+        const restartTime = new Date(w.restart_at).getTime()
+        if (now >= restartTime) {
+          console.log(`⏰ Scheduled restart reached for worker ${id}`)
+          // Clear restart_at to avoid loops, set back to idle/processing if starting
+          w.restart_at = undefined
+          w.status = 'idle'
+          await redisClient.hSet(REGISTRY_KEY, id, JSON.stringify(w))
+          
+          redisClient.publish('pulsar:worker_restart', JSON.stringify({ 
+            worker_id: w.worker_id, 
+            queue_name: w.queue_name 
+          }))
+          continue
+        }
+      }
+
+      // B. If worker hasn't heartbeated in WORKER_TTL seconds
       if (now - lastActivity >= WORKER_TTL * 1000) {
+        // Skip recovery if already intentionally stopped
+        if (w.status === 'stopped') {
+          // Just cleanup the entry if it's been stopped and stale for a long time (e.g. 1 hour)
+          if (now - lastActivity > 3600 * 1000) {
+            await redisClient.hDel(REGISTRY_KEY, id)
+          }
+          continue
+        }
+
         console.log(`🕵️ Recovery: Worker ${id} is stale. Cleaning up...`)
 
         // 1. Recover any jobs the worker was processing
@@ -203,9 +248,8 @@ export const workerRegistry = {
           }
         }
 
-        // 2. Self-Healing: If it was an API-started worker, notify for re-start
-        // We can publish to a special internal channel or handle it here if it's the same process
-        if (w.worker_id.startsWith('api-')) {
+        // 2. Self-Healing: If it was an API-started worker AND auto_restart is true
+        if (w.auto_restart && w.worker_id.startsWith('api-')) {
           console.log(`🛠️ Self-Healing: Signaling restart for persistent API worker ${id}`)
           redisClient.publish('pulsar:worker_restart', JSON.stringify({ 
             worker_id: w.worker_id, 

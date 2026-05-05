@@ -7,7 +7,7 @@ export const createJobSchema = z.object({
   priority: z.number().int().min(0).optional().default(0),
   max_attempts: z.number().int().min(1).optional().default(3),
   run_at: z.string().datetime().optional().nullable(),
-  failure_mode: z.enum(['succeed', 'fail', 'probably_fail']).optional().default('probably_fail'),
+  failure_mode: z.enum(['succeed', 'fail', 'probably_fail', '']).optional().default('probably_fail'),
   fail_probability: z.number().min(0).max(1).optional().default(0.3)
 })
 
