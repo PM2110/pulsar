@@ -44,13 +44,17 @@ const start = async () => {
           if (worker_id === uniqueWorkerId) {
             if (action === 'stop') {
               console.log(`🛑 Received stop signal via PubSub for worker ${worker_id}`)
+              // Stop both the singleton loop and the named instance (clears heartbeat immediately)
               workerService.stop()
+              workerService.stopInstance(uniqueWorkerId)
             } else if (action === 'start') {
               console.log(`🚀 Received start signal via PubSub for worker ${worker_id}`)
-              workerService.start(env.QUEUE_NAME, uniqueWorkerId)
+              // Use startInstance() — it tracks heartbeats per worker ID and avoids singleton flag collisions
+              workerService.startInstance(env.QUEUE_NAME, uniqueWorkerId)
             } else if (action === 'crash') {
-              console.log(`☠ Received crash signal via PubSub for worker ${worker_id}. Simulating crash by pausing worker loop instead of exiting, so UI Start button works.`)
+              console.log(`☠ Received crash signal via PubSub for worker ${worker_id}. Simulating crash.`)
               workerService.stop()
+              workerService.crashInstance(uniqueWorkerId)
             }
           }
         } catch (err) {

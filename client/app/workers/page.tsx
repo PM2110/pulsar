@@ -36,11 +36,13 @@ function WorkerPod({
   worker,
   onStop,
   onCrash,
+  onRefresh,
   now,
 }: {
   worker: WorkerInfo;
   onStop: (id: string, options?: any) => void;
   onCrash: (id: string) => void;
+  onRefresh: () => void;
   now: number;
 }) {
   const [showStopOptions, setShowStopOptions] = useState(false);
@@ -153,6 +155,7 @@ function WorkerPod({
                   setIsCrashing(true);
                   try {
                     await onCrash(worker.worker_id);
+                    onRefresh();
                   } finally {
                     setIsCrashing(false);
                   }
@@ -169,9 +172,9 @@ function WorkerPod({
                     position: "absolute", bottom: "100%", right: 0, width: 150, zIndex: 100, marginBottom: 8,
                     background: "var(--card-bg)", border: "1px solid var(--border)", borderRadius: 8, padding: 4,
                   }}>
-                    <button className="menu-item" onClick={() => onStop(worker.worker_id)}>Manual Stop</button>
-                    <button className="menu-item" onClick={() => onStop(worker.worker_id, { auto_restart: true })}>Auto-Restart</button>
-                    <button className="menu-item" onClick={() => onStop(worker.worker_id, { restart_in: 30 })}>Restart in 30s</button>
+                    <button className="menu-item" onClick={() => { onStop(worker.worker_id); setShowStopOptions(false); onRefresh(); }}>Manual Stop</button>
+                    <button className="menu-item" onClick={() => { onStop(worker.worker_id, { auto_restart: true }); setShowStopOptions(false); onRefresh(); }}>Auto-Restart</button>
+                    <button className="menu-item" onClick={() => { onStop(worker.worker_id, { restart_in: 30 }); setShowStopOptions(false); onRefresh(); }}>Restart in 30s</button>
                   </div>
                 )}
               </div>
@@ -292,7 +295,7 @@ export default function WorkersPage() {
             {activeWorkers.length > 0 ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
                 {activeWorkers.map(w => (
-                  <WorkerPod key={w.worker_id} worker={w} now={now} onCrash={(id) => apiService.crashWorker(id)} onStop={(id, opt) => apiService.stopWorker(id, opt)} />
+                  <WorkerPod key={w.worker_id} worker={w} now={now} onRefresh={fetchWorkers} onCrash={(id) => apiService.crashWorker(id)} onStop={(id, opt) => apiService.stopWorker(id, opt)} />
                 ))}
               </div>
             ) : (
@@ -310,7 +313,7 @@ export default function WorkersPage() {
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
                 {stoppedWorkers.map(w => (
-                  <WorkerPod key={w.worker_id} worker={w} now={now} onCrash={(id) => apiService.crashWorker(id)} onStop={(id, opt) => apiService.stopWorker(id, opt)} />
+                  <WorkerPod key={w.worker_id} worker={w} now={now} onRefresh={fetchWorkers} onCrash={(id) => apiService.crashWorker(id)} onStop={(id, opt) => apiService.stopWorker(id, opt)} />
                 ))}
               </div>
             </div>

@@ -14,6 +14,7 @@ const instanceConcurrency: Map<string, number> = new Map()
 const activeTasks: Map<string, Set<Promise<void>>> = new Map()
 const workerQueues: Map<string, string> = new Map() // Tracks workerId -> queueName
 const crashedInstances: Set<string> = new Set()
+const heartbeats: Map<string, NodeJS.Timeout> = new Map() // Tracks heartbeat intervals per workerId
 
 export const workerService = {
   isRunning: false,
@@ -60,6 +61,10 @@ export const workerService = {
    * Starts a named worker instance (used by /api/workers/start).
    */
   async startInstance(queueName: string, workerId: string) {
+    if (runningInstances.get(workerId)) {
+      console.warn(`⚠️ Worker instance '${workerId}' is already running. Ignoring duplicate start.`)
+      return
+    }
     runningInstances.set(workerId, true)
     crashedInstances.delete(workerId) // Reset crash state
     instanceConcurrency.set(workerId, 1)
@@ -70,6 +75,7 @@ export const workerService = {
     console.log(`🚀 Worker instance '${workerId}' started on queue: ${queueName} with concurrency: 1`)
 
     const heartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
+    heartbeats.set(workerId, heartbeat)
 
     while (runningInstances.get(workerId)) {
       try {
@@ -126,6 +132,12 @@ export const workerService = {
    */
   stopInstance(workerId: string) {
     runningInstances.set(workerId, false)
+    // Clear the heartbeat immediately so it stops re-registering the worker in Redis
+    const hb = heartbeats.get(workerId)
+    if (hb) {
+      clearInterval(hb)
+      heartbeats.delete(workerId)
+    }
     console.log(`🛑 Worker instance '${workerId}' stopping...`)
   },
 
@@ -135,6 +147,12 @@ export const workerService = {
   crashInstance(workerId: string) {
     crashedInstances.add(workerId)
     runningInstances.set(workerId, false)
+    // Clear the heartbeat immediately so it stops re-registering the worker in Redis
+    const hb = heartbeats.get(workerId)
+    if (hb) {
+      clearInterval(hb)
+      heartbeats.delete(workerId)
+    }
     console.log(`☠ Worker instance '${workerId}' crashing...`)
   },
 

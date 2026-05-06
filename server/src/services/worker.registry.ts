@@ -190,10 +190,20 @@ export const workerRegistry = {
           w.status = 'idle'
           await redisClient.hSet(REGISTRY_KEY, id, JSON.stringify(w))
 
-          redisClient.publish('pulsar:worker_restart', JSON.stringify({
-            worker_id: w.worker_id,
-            queue_name: w.queue_name
-          }))
+          if (w.worker_id.startsWith('api-')) {
+            // API workers are managed by the server process — use the restart channel
+            redisClient.publish('pulsar:worker_restart', JSON.stringify({
+              worker_id: w.worker_id,
+              queue_name: w.queue_name
+            }))
+          } else {
+            // Standalone Docker workers subscribe to pulsar:worker_control
+            redisClient.publish('pulsar:worker_control', JSON.stringify({
+              action: 'start',
+              worker_id: w.worker_id,
+              queue_name: w.queue_name
+            }))
+          }
           continue
         }
       }
@@ -271,13 +281,22 @@ export const workerRegistry = {
       }
     }
 
-    // 2. Self-Healing: If it was an API-started worker AND auto_restart is true
-    if (w.auto_restart && w.worker_id.startsWith('api-')) {
-      console.log(`🛠️ Self-Healing: Signaling restart for persistent API worker ${workerId}`)
-      redisClient.publish('pulsar:worker_restart', JSON.stringify({
-        worker_id: w.worker_id,
-        queue_name: w.queue_name
-      }))
+    // 2. Self-Healing: If auto_restart is true, signal the correct channel for the worker type
+    if (w.auto_restart) {
+      if (w.worker_id.startsWith('api-')) {
+        console.log(`🛠️ Self-Healing: Signaling restart for API worker ${workerId}`)
+        redisClient.publish('pulsar:worker_restart', JSON.stringify({
+          worker_id: w.worker_id,
+          queue_name: w.queue_name
+        }))
+      } else {
+        console.log(`🛠️ Self-Healing: Signaling restart for standalone worker ${workerId}`)
+        redisClient.publish('pulsar:worker_control', JSON.stringify({
+          action: 'start',
+          worker_id: w.worker_id,
+          queue_name: w.queue_name
+        }))
+      }
     }
 
     // 3. Mark worker as "stopped/dormant" rather than completely deleting it, so users can re-start it.
