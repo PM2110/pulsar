@@ -11,12 +11,17 @@ export const workerRegistry = {
   /**
    * Registers or updates a worker node in the shared Redis registry.
    */
-  register: async (workerId: string, queueName: string, autoRestart: boolean = false): Promise<void> => {
+  register: async (workerId: string, queueName: string, autoRestart: boolean = false, force: boolean = false): Promise<void> => {
     const existing = await workerRegistry.get(workerId)
+    
+    // If it was explicitly stopped, only allow registration if "force" is true (manual start).
+    // This prevents "ghost" heartbeats from dying processes from resurrecting the node.
+    if (existing?.status === 'stopped' && !force) return
+
     const info = {
       worker_id: workerId,
       queue_name: queueName,
-      status: existing?.status || 'idle',
+      status: force ? 'idle' : (existing?.status || 'idle'),
       concurrency: existing?.concurrency || 1,
       active_job_ids: existing?.active_job_ids || [],
       jobs_processed: existing?.jobs_processed || 0,
@@ -41,7 +46,7 @@ export const workerRegistry = {
    */
   setProcessing: async (workerId: string, jobId: string): Promise<void> => {
     const w = await workerRegistry.get(workerId)
-    if (w) {
+    if (w && w.status !== 'stopped') {
       w.status = 'processing'
       if (!w.active_job_ids.includes(jobId)) {
         w.active_job_ids.push(jobId)
@@ -56,7 +61,7 @@ export const workerRegistry = {
    */
   setIdle: async (workerId: string, jobId?: string): Promise<void> => {
     const w = await workerRegistry.get(workerId)
-    if (w) {
+    if (w && w.status !== 'stopped') {
       if (jobId) {
         w.active_job_ids = w.active_job_ids.filter(id => id !== jobId)
       } else {
@@ -106,7 +111,7 @@ export const workerRegistry = {
    */
   updateConcurrency: async (workerId: string, concurrency: number): Promise<void> => {
     const w = await workerRegistry.get(workerId)
-    if (w) {
+    if (w && w.status !== 'stopped') {
       w.concurrency = concurrency
       w.last_activity = new Date()
       await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
@@ -118,7 +123,7 @@ export const workerRegistry = {
    */
   incrementProcessed: async (workerId: string): Promise<void> => {
     const w = await workerRegistry.get(workerId)
-    if (w) {
+    if (w && w.status !== 'stopped') {
       w.jobs_processed++
       await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
     }
@@ -129,7 +134,7 @@ export const workerRegistry = {
    */
   incrementFailed: async (workerId: string): Promise<void> => {
     const w = await workerRegistry.get(workerId)
-    if (w) {
+    if (w && w.status !== 'stopped') {
       w.jobs_failed++
       await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
     }
@@ -149,20 +154,12 @@ export const workerRegistry = {
    */
   getAll: async (): Promise<WorkerInfo[]> => {
     const all = await redisClient.hGetAll(REGISTRY_KEY)
-    const now = new Date().getTime()
     const workers: WorkerInfo[] = []
 
     for (const id in all) {
       const w: WorkerInfo = JSON.parse(all[id])
-      const lastActivity = new Date(w.last_activity).getTime()
-
-      // Only filter out definitely stale workers, leave cleanup to recoverStaleWorkers
-      if (now - lastActivity < WORKER_TTL * 1000) {
-        workers.push(w)
-      } else if (w.status === 'stopped') {
-        // Keep stopped workers in the list even if "stale" so they can be resumed/restarted
-        workers.push(w)
-      }
+      // Return all registered workers; UI and recoverStaleWorkers handle state filtering
+      workers.push(w)
     }
     return workers
   },
@@ -281,28 +278,13 @@ export const workerRegistry = {
       }
     }
 
-    // 2. Self-Healing: If auto_restart is true, signal the correct channel for the worker type
-    if (w.auto_restart) {
-      if (w.worker_id.startsWith('api-')) {
-        console.log(`🛠️ Self-Healing: Signaling restart for API worker ${workerId}`)
-        redisClient.publish('pulsar:worker_restart', JSON.stringify({
-          worker_id: w.worker_id,
-          queue_name: w.queue_name
-        }))
-      } else {
-        console.log(`🛠️ Self-Healing: Signaling restart for standalone worker ${workerId}`)
-        redisClient.publish('pulsar:worker_control', JSON.stringify({
-          action: 'start',
-          worker_id: w.worker_id,
-          queue_name: w.queue_name
-        }))
-      }
-    }
+    // 2. Disable Self-Healing on crash as per user request to stay inactive
+    w.auto_restart = false
 
-    // 3. Mark worker as "stopped/dormant" rather than completely deleting it, so users can re-start it.
+    // 3. Mark worker as "stopped" rather than completely deleting it, so users can re-start it.
+    // NOTE: We do NOT update last_activity here to ensure the UI shows it as stale/disconnected.
     w.status = 'stopped'
     w.active_job_ids = []
-    w.last_activity = new Date()
     await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
   },
 

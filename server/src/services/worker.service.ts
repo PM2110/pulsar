@@ -18,6 +18,7 @@ const heartbeats: Map<string, NodeJS.Timeout> = new Map() // Tracks heartbeat in
 
 export const workerService = {
   isRunning: false,
+  singletonHeartbeat: null as NodeJS.Timeout | null,
 
   /**
    * Starts the singleton worker loop (used by Docker workers).
@@ -33,7 +34,7 @@ export const workerService = {
     console.log(`🚀 Worker started polling queue: ${queueName} with concurrency: 1`)
 
     // Heartbeat to keep registration alive in Redis
-    const heartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
+    this.singletonHeartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
 
     while (this.isRunning) {
       try {
@@ -53,7 +54,10 @@ export const workerService = {
         await new Promise(resolve => setTimeout(resolve, 5000))
       }
     }
-    clearInterval(heartbeat)
+    if (this.singletonHeartbeat) {
+      clearInterval(this.singletonHeartbeat)
+      this.singletonHeartbeat = null
+    }
     await workerRegistry.setStopped(workerId)
   },
 
@@ -157,10 +161,14 @@ export const workerService = {
   },
 
   /**
-   * Stops the worker loop.
+   * Stops the worker loop and clears singleton heartbeat.
    */
   stop() {
     this.isRunning = false
+    if (this.singletonHeartbeat) {
+      clearInterval(this.singletonHeartbeat)
+      this.singletonHeartbeat = null
+    }
     console.log('🛑 Worker stopping...')
   },
 
@@ -183,6 +191,9 @@ export const workerService = {
 
     // Use non-blocking zPopMin to avoid locking the connection for other concurrent slots
     const result = await redisClient.zPopMin(redisKey)
+    
+    // Safety check: if the worker was stopped while waiting for Redis, bail out immediately
+    if (!this.isRunning && !runningInstances.get(workerId)) return
 
     if (!result) {
       // Small sleep to avoid tight loop on empty queue
@@ -282,6 +293,12 @@ export const workerService = {
       // Simulated Processing Delay: 3-10 Seconds
       const processingDelay = Math.floor(Math.random() * 7000) + 3000
       await new Promise(resolve => setTimeout(resolve, processingDelay))
+
+      // Final safety check: don't update registry if we've been crashed during simulation
+      if (!this.isRunning && !runningInstances.get(workerId)) {
+        console.log(`⚠️ Worker ${workerId} was crashed during processing. Aborting registry update.`)
+        return
+      }
 
       if (shouldFail) {
         throw new Error('SIMULATED_FAILURE: Custom processing error occurred.')

@@ -28,7 +28,7 @@ export const workerController = {
 
       // If it's a standalone node rather than an API node, broadcast start remotely.
       // API nodes self-heal natively here.
-      await workerRegistry.register(worker_id, queue_name, auto_restart)
+      await workerRegistry.register(worker_id, queue_name, auto_restart, true)
       
       if (!worker_id.startsWith('api-')) {
         redisClient.publish('pulsar:worker_control', JSON.stringify({ action: 'start', worker_id, queue_name }))

@@ -22,7 +22,7 @@ const QUEUES = ["notifications", "media", "default"];
 const STATUS_CONFIG: Record<string, { label: string; badgeClass: string; pulseClass: string }> = {
   idle: { label: "Idle", badgeClass: "badge-completed", pulseClass: "pulse-green" },
   processing: { label: "Processing", badgeClass: "badge-processing", pulseClass: "pulse-white" },
-  stopped: { label: "Stopped", badgeClass: "badge-pending", pulseClass: "pulse-gray" },
+  stopped: { label: "Inactive", badgeClass: "badge-pending", pulseClass: "pulse-gray" },
 };
 
 function timeSince(iso: string, now: number) {
@@ -47,8 +47,10 @@ function WorkerPod({
 }) {
   const [showStopOptions, setShowStopOptions] = useState(false);
   const [isCrashing, setIsCrashing] = useState(false);
-  const isStale = now - new Date(worker.last_activity).getTime() > 40000 && worker.status !== "stopped";
+  const isStale = now - new Date(worker.last_activity).getTime() > 30000;
   const cfg = STATUS_CONFIG[worker.status] || STATUS_CONFIG.stopped;
+  const displayStatus = isStale ? "OFFLINE" : worker.status;
+  const displayBadge = isStale ? "badge-pending" : cfg.badgeClass;
 
   return (
     <div className={`card ${isStale ? 'stale-warning' : ''}`} style={{ transition: "all 0.3s ease", position: "relative" }}>
@@ -57,10 +59,11 @@ function WorkerPod({
           position: "absolute", top: 0, left: 0, right: 0,
           background: "rgba(248, 113, 113, 0.1)",
           color: "#f87171", fontSize: 10, textAlign: "center",
-          padding: "2px 0", fontWeight: 700, borderRadius: "10px 10px 0 0",
-          borderBottom: "1px solid rgba(248, 113, 113, 0.2)"
+          padding: "4px 0", fontWeight: 700, borderRadius: "10px 10px 0 0",
+          borderBottom: "1px solid rgba(248, 113, 113, 0.2)",
+          letterSpacing: "0.05em"
         }}>
-          UNRESPONSIVE
+          NODE DISCONNECTED
         </div>
       )}
 
@@ -88,8 +91,8 @@ function WorkerPod({
           </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
-          <span className={`badge ${cfg.badgeClass}`} style={{ fontSize: 10 }}>
-            {worker.status}
+          <span className={`badge ${displayBadge}`} style={{ fontSize: 10 }}>
+            {displayStatus}
           </span>
           {worker.restart_at && (
             <span style={{ fontSize: 9, color: "var(--text-muted)" }}>
@@ -145,7 +148,7 @@ function WorkerPod({
           Active {timeSince(worker.last_activity, now)}
         </span>
         <div style={{ display: "flex", gap: 6 }}>
-          {worker.status !== "stopped" ? (
+          {worker.status !== "stopped" && !isStale ? (
             <>
               <button
                 className="btn btn-secondary"
@@ -253,8 +256,8 @@ export default function WorkersPage() {
     }
   };
 
-  const activeWorkers = workers.filter(w => w.status !== "stopped");
-  const stoppedWorkers = workers.filter(w => w.status === "stopped");
+  const activeWorkers = workers.filter(w => w.status !== "stopped" && (now - new Date(w.last_activity).getTime() < 30000));
+  const inactiveWorkers = workers.filter(w => w.status === "stopped" || (now - new Date(w.last_activity).getTime() >= 30000));
 
   return (
     <div style={{ padding: "28px 32px", maxWidth: 1200 }}>
@@ -265,7 +268,7 @@ export default function WorkersPage() {
             Worker Fleet
           </h1>
           <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-            {activeWorkers.length} active · {stoppedWorkers.length} dormant · websocket connected
+            {activeWorkers.length} active · {inactiveWorkers.length} inactive · websocket connected
           </p>
         </div>
         <button className="btn btn-secondary" style={{ padding: "8px 16px" }} onClick={fetchWorkers}>Refresh</button>
@@ -305,14 +308,14 @@ export default function WorkersPage() {
             )}
           </div>
 
-          {/* Dormant Nodes */}
-          {stoppedWorkers.length > 0 && (
+          {/* Inactive Nodes */}
+          {inactiveWorkers.length > 0 && (
             <div>
               <div className="section-header">
-                <span className="section-title">Dormant nodes</span>
+                <span className="section-title">Inactive nodes</span>
               </div>
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(320px, 1fr))", gap: 14 }}>
-                {stoppedWorkers.map(w => (
+                {inactiveWorkers.map(w => (
                   <WorkerPod key={w.worker_id} worker={w} now={now} onRefresh={fetchWorkers} onCrash={(id) => apiService.crashWorker(id)} onStop={(id, opt) => apiService.stopWorker(id, opt)} />
                 ))}
               </div>

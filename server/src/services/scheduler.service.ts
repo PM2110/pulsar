@@ -43,9 +43,9 @@ export const schedulerService = {
           this.lastAgingRun = now
         }
         
-        // 4. Run Crash Recovery (Low Frequency - every 60s)
+        // 4. Run Crash Recovery (Medium Frequency - every 15s)
         // Scans for stale heartbeats and recovers orphaned jobs.
-        if (now - this.lastRecoveryRun > 60000) {
+        if (now - this.lastRecoveryRun > 15000) {
           const { workerRegistry } = await import('./worker.registry.js')
           await workerRegistry.recoverStaleWorkers(queueService)
           this.lastRecoveryRun = now
