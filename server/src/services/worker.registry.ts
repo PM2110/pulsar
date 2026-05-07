@@ -168,7 +168,7 @@ export const workerRegistry = {
    * Internal logic to identify and recover jobs from stale workers.
    * Called periodically by the scheduler's Death Watch.
    */
-  recoverStaleWorkers: async (queueService: any): Promise<number> => {
+  recoverStaleWorkers: async (queueService: any, onlyRestarts: boolean = false): Promise<number> => {
     const all = await redisClient.hGetAll(REGISTRY_KEY)
     const now = new Date().getTime()
     let recoveredCount = 0
@@ -177,14 +177,17 @@ export const workerRegistry = {
       const w: WorkerInfo = JSON.parse(all[id])
       const lastActivity = new Date(w.last_activity).getTime()
 
-      // A. Handle timed re-starts
-      if (w.status === 'stopped' && w.restart_at) {
-        const restartTime = new Date(w.restart_at).getTime()
-        if (now >= restartTime) {
-          console.log(`⏰ Scheduled restart reached for worker ${id}`)
+      // A. Handle timed re-starts OR auto-heals for stopped workers
+      if (w.status === 'stopped') {
+        const restartTime = w.restart_at ? new Date(w.restart_at).getTime() : null
+        const shouldRestart = (restartTime && now >= restartTime) || (w.auto_restart && !w.restart_at)
+
+        if (shouldRestart) {
+          console.log(`⏰ Restarting worker ${id} (${restartTime ? 'Scheduled' : 'Auto-Heal'})`)
           // Clear restart_at to avoid loops, set back to idle/processing if starting
           w.restart_at = undefined
           w.status = 'idle'
+          w.last_activity = new Date() // Reset activity clock to give it time to boot
           await redisClient.hSet(REGISTRY_KEY, id, JSON.stringify(w))
 
           if (w.worker_id.startsWith('api-')) {
@@ -204,6 +207,8 @@ export const workerRegistry = {
           continue
         }
       }
+      
+      if (onlyRestarts) continue
 
       // B. If worker hasn't heartbeated in WORKER_TTL seconds
       if (now - lastActivity >= WORKER_TTL * 1000) {
@@ -278,8 +283,9 @@ export const workerRegistry = {
       }
     }
 
-    // 2. Disable Self-Healing on crash as per user request to stay inactive
-    w.auto_restart = false
+    // 2. We preserve auto_restart setting so that the scheduler's Death Watch
+    // can automatically attempt a restart in the next cycle if desired.
+    // (w.auto_restart remains unchanged)
 
     // 3. Mark worker as "stopped" rather than completely deleting it, so users can re-start it.
     // NOTE: We do NOT update last_activity here to ensure the UI shows it as stale/disconnected.

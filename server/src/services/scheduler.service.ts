@@ -43,11 +43,14 @@ export const schedulerService = {
           this.lastAgingRun = now
         }
         
-        // 4. Run Crash Recovery (Medium Frequency - every 15s)
-        // Scans for stale heartbeats and recovers orphaned jobs.
-        if (now - this.lastRecoveryRun > 15000) {
-          const { workerRegistry } = await import('./worker.registry.js')
-          await workerRegistry.recoverStaleWorkers(queueService)
+        // 4. Run Crash Recovery and Precise Restarts
+        // We run the restart check every loop (~1s) for high precision, 
+        // but the full stale recovery check only every 15s.
+        const { workerRegistry } = await import('./worker.registry.js')
+        const doFullStaleCheck = (now - this.lastRecoveryRun > 15000)
+        await workerRegistry.recoverStaleWorkers(queueService, !doFullStaleCheck)
+        
+        if (doFullStaleCheck) {
           this.lastRecoveryRun = now
         }
 

@@ -47,7 +47,7 @@ function WorkerPod({
 }) {
   const [showStopOptions, setShowStopOptions] = useState(false);
   const [isCrashing, setIsCrashing] = useState(false);
-  const isStale = now - new Date(worker.last_activity).getTime() > 30000;
+  const isStale = worker.status !== 'stopped' && (now - new Date(worker.last_activity).getTime() > 30000);
   const cfg = STATUS_CONFIG[worker.status] || STATUS_CONFIG.stopped;
   const displayStatus = isStale ? "OFFLINE" : worker.status;
   const displayBadge = isStale ? "badge-pending" : cfg.badgeClass;

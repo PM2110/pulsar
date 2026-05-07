@@ -62,7 +62,7 @@ const start = async () => {
       try {
         const { worker_id, queue_name } = JSON.parse(message)
         console.log(`🛠️ Self-Healing: Restarting API worker instance ${worker_id} on ${queue_name}`)
-        await workerService.startInstance(queue_name, worker_id)
+        workerService.startInstance(queue_name, worker_id)
       } catch (err) {
         console.error('❌ Error during self-healing restart:', err)
       }
