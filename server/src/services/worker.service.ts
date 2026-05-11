@@ -13,9 +13,12 @@ const runningInstances: Map<string, boolean> = new Map()
 const instanceConcurrency: Map<string, number> = new Map()
 const activeTasks: Map<string, Set<Promise<void>>> = new Map()
 const workerQueues: Map<string, string> = new Map() // Tracks workerId -> queueName
+const crashedInstances: Set<string> = new Set()
+const heartbeats: Map<string, NodeJS.Timeout> = new Map() // Tracks heartbeat intervals per workerId
 
 export const workerService = {
   isRunning: false,
+  singletonHeartbeat: null as NodeJS.Timeout | null,
 
   /**
    * Starts the singleton worker loop (used by Docker workers).
@@ -31,7 +34,7 @@ export const workerService = {
     console.log(`🚀 Worker started polling queue: ${queueName} with concurrency: 1`)
 
     // Heartbeat to keep registration alive in Redis
-    const heartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
+    this.singletonHeartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
 
     while (this.isRunning) {
       try {
@@ -51,7 +54,10 @@ export const workerService = {
         await new Promise(resolve => setTimeout(resolve, 5000))
       }
     }
-    clearInterval(heartbeat)
+    if (this.singletonHeartbeat) {
+      clearInterval(this.singletonHeartbeat)
+      this.singletonHeartbeat = null
+    }
     await workerRegistry.setStopped(workerId)
   },
 
@@ -59,7 +65,12 @@ export const workerService = {
    * Starts a named worker instance (used by /api/workers/start).
    */
   async startInstance(queueName: string, workerId: string) {
+    if (runningInstances.get(workerId)) {
+      console.warn(`⚠️ Worker instance '${workerId}' is already running. Ignoring duplicate start.`)
+      return
+    }
     runningInstances.set(workerId, true)
+    crashedInstances.delete(workerId) // Reset crash state
     instanceConcurrency.set(workerId, 1)
     workerQueues.set(workerId, queueName)
     activeTasks.set(workerId, new Set())
@@ -68,6 +79,7 @@ export const workerService = {
     console.log(`🚀 Worker instance '${workerId}' started on queue: ${queueName} with concurrency: 1`)
 
     const heartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
+    heartbeats.set(workerId, heartbeat)
 
     while (runningInstances.get(workerId)) {
       try {
@@ -87,9 +99,16 @@ export const workerService = {
       }
     }
     clearInterval(heartbeat)
-    await workerRegistry.setStopped(workerId)
+
+    // Skip registry cleanup if this was an intentional "crash"
+    if (!crashedInstances.has(workerId)) {
+      await workerRegistry.setStopped(workerId)
+      console.log(`🛑 Worker instance '${workerId}' stopped gracefully.`)
+    } else {
+      console.log(`☠ Worker instance '${workerId}' exited silently (Simulation).`)
+    }
+    
     workerQueues.delete(workerId)
-    console.log(`🛑 Worker instance '${workerId}' stopped.`)
   },
 
   /**
@@ -117,14 +136,39 @@ export const workerService = {
    */
   stopInstance(workerId: string) {
     runningInstances.set(workerId, false)
+    // Clear the heartbeat immediately so it stops re-registering the worker in Redis
+    const hb = heartbeats.get(workerId)
+    if (hb) {
+      clearInterval(hb)
+      heartbeats.delete(workerId)
+    }
     console.log(`🛑 Worker instance '${workerId}' stopping...`)
   },
 
   /**
-   * Stops the worker loop.
+   * Simulates a worker crash by stopping the loop without cleaning up the registry.
+   */
+  crashInstance(workerId: string) {
+    crashedInstances.add(workerId)
+    runningInstances.set(workerId, false)
+    // Clear the heartbeat immediately so it stops re-registering the worker in Redis
+    const hb = heartbeats.get(workerId)
+    if (hb) {
+      clearInterval(hb)
+      heartbeats.delete(workerId)
+    }
+    console.log(`☠ Worker instance '${workerId}' crashing...`)
+  },
+
+  /**
+   * Stops the worker loop and clears singleton heartbeat.
    */
   stop() {
     this.isRunning = false
+    if (this.singletonHeartbeat) {
+      clearInterval(this.singletonHeartbeat)
+      this.singletonHeartbeat = null
+    }
     console.log('🛑 Worker stopping...')
   },
 
@@ -147,6 +191,9 @@ export const workerService = {
 
     // Use non-blocking zPopMin to avoid locking the connection for other concurrent slots
     const result = await redisClient.zPopMin(redisKey)
+    
+    // Safety check: if the worker was stopped while waiting for Redis, bail out immediately
+    if (!this.isRunning && !runningInstances.get(workerId)) return
 
     if (!result) {
       // Small sleep to avoid tight loop on empty queue
@@ -246,6 +293,12 @@ export const workerService = {
       // Simulated Processing Delay: 3-10 Seconds
       const processingDelay = Math.floor(Math.random() * 7000) + 3000
       await new Promise(resolve => setTimeout(resolve, processingDelay))
+
+      // Final safety check: don't update registry if we've been crashed during simulation
+      if (!this.isRunning && !runningInstances.get(workerId)) {
+        console.log(`⚠️ Worker ${workerId} was crashed during processing. Aborting registry update.`)
+        return
+      }
 
       if (shouldFail) {
         throw new Error('SIMULATED_FAILURE: Custom processing error occurred.')

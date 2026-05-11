@@ -22,7 +22,8 @@ export const jobController = {
         max_attempts,
         run_at,
         failure_mode,
-        fail_probability
+        fail_probability,
+        idempotency_key
       } = req.body
 
       const queue_name = provided_queue_name || QUEUE_MAP[job_type] || DEFAULT_QUEUE
@@ -33,31 +34,47 @@ export const jobController = {
       const insertQuery = `
         INSERT INTO jobs (
           queue_name, job_type, payload, status, priority, 
-          max_attempts, run_at, failure_mode, fail_probability
+          max_attempts, run_at, failure_mode, fail_probability, idempotency_key
         ) 
-        VALUES ($1, $2, $3, 'pending', $4, $5, COALESCE($6, NOW()), $7, $8)
+        VALUES ($1, $2, $3, 'pending', $4, $5, COALESCE($6, NOW()), $7, $8, $9)
+        ON CONFLICT (idempotency_key) DO NOTHING
         RETURNING *
       `
 
       const values = [
         queue_name, job_type, JSON.stringify(payload), priority, max_attempts,
-        run_at || null, failure_mode, fail_probability
+        run_at || null, failure_mode, fail_probability, idempotency_key || null
       ]
 
       const result = await client.query(insertQuery, values)
-      const newJob = result.rows[0]
 
-      const isImmediate = !run_at || new Date(run_at) <= new Date()
+      let jobToEnqueue;
+      let isNew = true;
 
-      if (isImmediate) {
-        await queueService.enqueueJob(queue_name, newJob.id, priority)
+      if (result.rows.length === 0 && idempotency_key) {
+        // Idempotency conflict: find existing job
+        const existingResult = await client.query('SELECT * FROM jobs WHERE idempotency_key = $1', [idempotency_key])
+        jobToEnqueue = existingResult.rows[0]
+        isNew = false
       } else {
-        const runAtDate = new Date(run_at)
-        await queueService.enqueueDelayedJob(queue_name, newJob.id, priority, runAtDate.getTime())
+        jobToEnqueue = result.rows[0]
+      }
+
+      if (isNew) {
+        const isImmediate = !run_at || new Date(run_at) <= new Date()
+        if (isImmediate) {
+          await queueService.enqueueJob(queue_name, jobToEnqueue.id, priority)
+        } else {
+          const runAtDate = new Date(run_at)
+          await queueService.enqueueDelayedJob(queue_name, jobToEnqueue.id, priority, runAtDate.getTime())
+        }
       }
 
       await client.query('COMMIT')
-      res.status(201).json({ message: 'Job created successfully', job: newJob })
+      res.status(isNew ? 201 : 200).json({
+        message: isNew ? 'Job created successfully' : 'Idempotent request: Job already exists',
+        job: jobToEnqueue
+      })
     } catch (err) {
       if (client) await client.query('ROLLBACK')
       next(err)
@@ -198,7 +215,7 @@ export const jobController = {
     let client;
     try {
       const id = req.params.id as string
-      
+
       client = await getClient()
       await client.query('BEGIN')
 
@@ -208,7 +225,7 @@ export const jobController = {
         client.release()
         return res.status(404).json({ error: 'Job not found' })
       }
-      
+
       const job = jobResult.rows[0]
       await client.query('DELETE FROM jobs WHERE id = $1', [id])
       if (job.status === 'pending') await queueService.removeFromQueue(job.queue_name, id)
@@ -259,7 +276,7 @@ export const jobController = {
       const updatedJob = updatedResult.rows[0]
 
       await queueService.enqueueJob(updatedJob.queue_name, id, updatedJob.priority)
-      
+
       await client.query('COMMIT')
       res.json({ message: 'Job retried successfully', job: updatedJob })
     } catch (err) {

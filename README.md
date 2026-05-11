@@ -1,29 +1,86 @@
-# Pulsar Job Engine
+# 🌀 Pulsar Job Engine
 
-Pulsar is a robust, high-performance background job engine designed for Node.js environments. It ensures atomic job creation using the **Transactional Outbox Pattern** and provides a real-time dashboard for monitoring and control.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
+[![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
+[![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/)
 
-## 🚀 Quick Start (Docker)
+Pulsar is a **high-performance, reliable background job engine** built for modern Node.js ecosystems. It bridges the gap between traditional database persistence and high-speed queueing by implementing the **Transactional Outbox Pattern**, ensuring that no job is ever lost or double-processed.
+
+---
+
+## ✨ Key Features
+
+- 🛡️ **Guaranteed Atomicity**: Uses the Transactional Outbox Pattern to synchronize PostgreSQL updates with Redis enqueues.
+- ⚡ **High Performance**: Leverages Redis Sorted Sets for sub-millisecond priority-based job retrieval.
+- 📈 **Dynamic Autoscaling**: Automatically scales worker concurrency based on real-time queue depth.
+- 📊 **Real-time Dashboard**: A beautiful Next.js-based monitoring interface with live WebSocket updates.
+- 🔄 **Exponential Backoff**: Built-in retry logic with configurable backoff strategies.
+- 🛠️ **Developer Friendly**: Fully typed with TypeScript, extensive documentation, and easy Docker-based setup.
+
+---
+
+## 🏗️ Architecture at a Glance
+
+Pulsar splits responsibilities across three main layers:
+
+1.  **API Layer**: Handles job submission and management via REST endpoints.
+2.  **Relay Layer**: Monitors the PostgreSQL Outbox and promotes jobs to Redis.
+3.  **Worker Layer**: Consumes jobs from Redis and executes the business logic.
+
+```mermaid
+graph LR
+    Client([API Client]) --> API[Express API]
+    API --> DB[(PostgreSQL)]
+    DB -- Outbox --> Relay[Scheduler Relay]
+    Relay --> Redis[(Redis Queue)]
+    Redis --> Workers[Worker Pool]
+    Workers --> DB
+    Dashboard[Dashboard App] -- WS --> API
+```
+
+---
+
+## 🚀 Quick Start
+
+The fastest way to get Pulsar running is using Docker Compose:
 
 ```bash
+# Clone the repository
+git clone https://github.com/manan/pulsar.git
+cd pulsar
+
+# Start the entire stack
 docker compose up -d --build
 ```
-- **Dashboard**: `http://localhost:3001`
-- **API Server**: `http://localhost:3000`
 
-## 📖 Documentation
+- 🖥️ **Dashboard**: [http://localhost:3001](http://localhost:3001)
+- 🔌 **API Server**: [http://localhost:3000](http://localhost:3000)
 
-Dive into the details of how Pulsar works:
+---
 
-- **[Architecture Overview](docs/architecture.md)**: Explore the system design and core patterns like the Transactional Outbox.
-- **[Development Guide](docs/development-guide.md)**: Setup instructions, local execution, migrations, and seeding.
-- **[API Reference](docs/api-reference.md)**: Detailed documentation of all available REST endpoints.
-- **[Database Schema](docs/database-schema.md)**: PostgreSQ table definitions and indexing strategy.
-- **[Worker System](docs/worker-system.md)**: Deep dive into job polling, priority logic, and autoscaling.
-- **[Transactional Outbox Pattern](docs/outbox-pattern.md)**: Specific technical details on how we ensure atomicity.
+## 📖 Detailed Documentation
 
-## Core Features
-- **Reliable Atomicity**: Never lose a job between DB and Redis.
-- **Priority Queueing**: Native support for prioritized task execution.
-- **Exponential Backoff**: Automatic retries with increasing delays.
-- **Live Monitoring**: Real-time stats and worker telemetry via WebSockets.
-- **Dynamic Scaling**: Automatic worker thread management based on queue depth.
+| Guide | Description |
+| :--- | :--- |
+| 🏗️ **[Architecture](docs/architecture.md)** | Deep dive into system design and core patterns. |
+| ⚙️ **[Worker System](docs/worker-system.md)** | Detailed look at polling, priority, and scaling. |
+| 🛡️ **[Outbox Pattern](docs/outbox-pattern.md)** | Technical breakdown of how we ensure atomicity. |
+| 🔌 **[API Reference](docs/api-reference.md)** | Comprehensive list of REST endpoints and payloads. |
+| 💾 **[Database Schema](docs/database-schema.md)** | PostgreSQL table definitions and indexing logic. |
+| 🛠️ **[Development Guide](docs/development-guide.md)** | Local setup, migrations, and testing instructions. |
+
+---
+
+## 🛠️ Tech Stack
+
+- **Backend**: Node.js, Express, TypeScript, Prisma (ORM)
+- **Frontend**: Next.js 14+, Tailwind CSS, Lucide Icons, Recharts
+- **Infrastructure**: PostgreSQL 15, Redis 7, Docker
+- **Communication**: WebSockets (Socket.io) for real-time telemetry
+
+---
+
+## 📄 License
+
+Distributed under the MIT License. See `LICENSE` for more information.

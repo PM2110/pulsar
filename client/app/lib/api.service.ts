@@ -24,12 +24,16 @@ export const apiService = {
     const response = await api.get('/api/workers');
     return response.data;
   },
-  startWorker: async (workerData: { queue_name: string; worker_id: string }) => {
+  startWorker: async (workerData: { queue_name: string; worker_id: string; auto_restart?: boolean }) => {
     const response = await api.post('/api/workers/start', workerData);
     return response.data;
   },
-  stopWorker: async (worker_id: string) => {
-    const response = await api.post('/api/workers/stop', { worker_id });
+  stopWorker: async (worker_id: string, options: { auto_restart?: boolean; restart_in?: number } = {}) => {
+    const response = await api.post('/api/workers/stop', { worker_id, ...options });
+    return response.data;
+  },
+  crashWorker: async (worker_id: string) => {
+    const response = await api.post('/api/workers/crash', { worker_id });
     return response.data;
   },
   getAutoscalerConfig: async () => {

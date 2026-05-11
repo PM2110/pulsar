@@ -25,15 +25,40 @@ const start = async () => {
     }
 
     if (processType === 'worker' || processType === 'both') {
-      // Dynamic Concurrency Subscriber
+      // Dynamic Concurrency & Control Subscriber
       const subClient = redisClient.duplicate()
       await subClient.connect()
+      
       await subClient.subscribe('pulsar:concurrency_update', async (message) => {
         try {
           const { queue_name, concurrency } = JSON.parse(message)
           await workerService.handleConcurrencyUpdate(queue_name, concurrency)
         } catch (err) {
           console.error('❌ Error handling concurrency update:', err)
+        }
+      })
+
+      await subClient.subscribe('pulsar:worker_control', async (message) => {
+        try {
+          const { action, worker_id } = JSON.parse(message)
+          if (worker_id === uniqueWorkerId) {
+            if (action === 'stop') {
+              console.log(`🛑 Received stop signal via PubSub for worker ${worker_id}`)
+              // Stop both the singleton loop and the named instance (clears heartbeat immediately)
+              workerService.stop()
+              workerService.stopInstance(uniqueWorkerId)
+            } else if (action === 'start') {
+              console.log(`🚀 Received start signal via PubSub for worker ${worker_id}`)
+              // Use startInstance() — it tracks heartbeats per worker ID and avoids singleton flag collisions
+              workerService.startInstance(env.QUEUE_NAME, uniqueWorkerId)
+            } else if (action === 'crash') {
+              console.log(`☠ Received crash signal via PubSub for worker ${worker_id}. Simulating crash.`)
+              workerService.stop()
+              workerService.crashInstance(uniqueWorkerId)
+            }
+          }
+        } catch (err) {
+          console.error('❌ Error handling worker control event:', err)
         }
       })
 

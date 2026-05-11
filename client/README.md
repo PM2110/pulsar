@@ -1,36 +1,37 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# 📊 Pulsar Dashboard
 
-## Getting Started
+This is the frontend monitoring and management interface for the **Pulsar Job Engine**. Built with Next.js 14, it provides a real-time, high-performance dashboard for overseeing background tasks.
 
-First, run the development server:
+## ✨ Features
 
+- 🕒 **Real-time Monitoring**: Live updates via WebSockets (Socket.io).
+- 📈 **Performance Analytics**: Visual throughput and latency charts using Recharts.
+- 🛠️ **Job Control**: Create, retry, and manage jobs through a clean UI.
+- 🧵 **Worker Management**: View and scale worker instances in real-time.
+- 📱 **Fully Responsive**: Optimized for all screen sizes.
+
+## 🚀 Getting Started
+
+### Prerequisites
+Ensure the Pulsar API server is running (usually on `http://localhost:3000`).
+
+### Installation
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+# Install dependencies
+pnpm install
+
+# Run the development server
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3001](http://localhost:3001) to view the dashboard.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## 🛠️ Tech Stack
+- **Framework**: Next.js 14+ (App Router)
+- **Styling**: Tailwind CSS
+- **Icons**: Lucide React
+- **Charts**: Recharts
+- **Communication**: Socket.io-client
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
-
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📖 Learn More
+For a deep dive into the dashboard architecture and features, see the **[Dashboard Documentation](../docs/dashboard.md)**.

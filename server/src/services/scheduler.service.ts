@@ -9,6 +9,7 @@ export const schedulerService = {
   isRunning: false,
   lastReaperRun: 0,
   lastAgingRun: 0,
+  lastRecoveryRun: 0,
 
   /**
    * Starts the polling background scheduler loop.
@@ -40,6 +41,17 @@ export const schedulerService = {
         if (now - this.lastAgingRun > 30000) {
           await queueService.applyPriorityAging(queueName)
           this.lastAgingRun = now
+        }
+        
+        // 4. Run Crash Recovery and Precise Restarts
+        // We run the restart check every loop (~1s) for high precision, 
+        // but the full stale recovery check only every 15s.
+        const { workerRegistry } = await import('./worker.registry.js')
+        const doFullStaleCheck = (now - this.lastRecoveryRun > 15000)
+        await workerRegistry.recoverStaleWorkers(queueService, !doFullStaleCheck)
+        
+        if (doFullStaleCheck) {
+          this.lastRecoveryRun = now
         }
 
         // 4. Promote ready jobs and get wait time until next job

@@ -33,13 +33,21 @@ const start = async () => {
       try {
         const eventData = JSON.parse(message)
         io.emit('job_update', eventData)
-        
-        const stats = await statsService.getStats()
-        io.emit('stats_update', stats)
       } catch (err) {
         console.error('Error broadcasting websocket events:', err)
       }
     })
+
+    // Securely aggregate metrics and broadcast stats on an independent loop
+    // preventing Postgres DDOS spirals when high job volumes flow.
+    setInterval(async () => {
+      try {
+        const stats = await statsService.getStats()
+        io.emit('stats_update', stats)
+      } catch (err) {
+        console.error('Error broadcasting stats update:', err)
+      }
+    }, 2000)
 
     await pubSubClient.subscribe('pulsar:concurrency_update', async (message) => {
       try {
@@ -47,6 +55,29 @@ const start = async () => {
         await workerService.handleConcurrencyUpdate(queue_name, concurrency)
       } catch (err) {
         console.error('❌ Error handling concurrency update on server:', err)
+      }
+    })
+
+    await pubSubClient.subscribe('pulsar:worker_restart', async (message) => {
+      try {
+        const { worker_id, queue_name } = JSON.parse(message)
+        console.log(`🛠️ Self-Healing: Restarting API worker instance ${worker_id} on ${queue_name}`)
+        workerService.startInstance(queue_name, worker_id)
+      } catch (err) {
+        console.error('❌ Error during self-healing restart:', err)
+      }
+    })
+
+    await pubSubClient.subscribe('pulsar:worker_control', async (message) => {
+      try {
+        const { action, worker_id } = JSON.parse(message)
+        if (action === 'stop') {
+          workerService.stopInstance(worker_id)
+        } else if (action === 'crash') {
+          workerService.crashInstance(worker_id)
+        }
+      } catch (err) {
+        console.error('❌ Error handling worker control event on server:', err)
       }
     })
 

@@ -2,11 +2,14 @@ import { z } from 'zod'
 
 export const startWorkerSchema = z.object({
   queue_name: z.string().optional().default('default'),
-  worker_id: z.string().min(1, 'Worker ID is required')
+  worker_id: z.string().min(1, 'Worker ID is required'),
+  auto_restart: z.boolean().optional()
 })
 
 export const stopWorkerSchema = z.object({
-  worker_id: z.string().min(1, 'Worker ID is required')
+  worker_id: z.string().min(1, 'Worker ID is required'),
+  auto_restart: z.boolean().optional(),
+  restart_in: z.number().int().min(1).optional()
 })
 
 export const updateAutoscalerConfigSchema = z.object({
