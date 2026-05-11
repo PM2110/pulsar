@@ -1,81 +1,79 @@
-# Architecture Overview
+# 🏗️ Architecture Overview
 
-Pulsar is a high-performance job engine designed for reliable, prioritized background processing. It uses a hybrid architecture leveraging **PostgreSQL** for persistence and **Redis** for high-frequency queueing.
+Pulsar is designed with a **decoupled, event-driven architecture** that prioritizes reliability and performance. By separating job submission from execution, Pulsar can handle bursts of traffic without overwhelming backend resources.
 
-## High-Level Architecture
+## 🌉 The "Bridge" Architecture
+
+At its core, Pulsar acts as a reliable bridge between your application's database and a high-performance execution environment.
 
 ```mermaid
 graph TD
-    User([User/API Client]) --> Express[Express API Server]
-    Express --> PG[(PostgreSQL)]
-    Express --> Redis[(Redis Queue)]
-    
-    subgraph "Background Processing"
-        Relay[Outbox Relay] --> PG
-        Relay --> Redis
-        Worker[Worker Pool] --> Redis
-        Worker --> PG
-        Scaler[Autoscaler] --> Redis
-        Scaler --> Worker
+    subgraph "Application Context"
+        API[Express API] --> DB[(PostgreSQL)]
+        DB -- "Transactional Outbox" --> OB[Outbox Table]
     end
+
+    subgraph "Reliability Layer"
+        Relay[Outbox Relay] -- "Polls & Locks" --> OB
+        Relay -- "Enqueues" --> Redis[(Redis)]
+    end
+
+    subgraph "Execution Layer"
+        WorkerPool[Worker Pool] -- "BZPOPMIN" --> Redis
+        WorkerPool -- "Updates Status" --> DB
+        Scaler[Autoscaler] -- "Monitors Depth" --> Redis
+        Scaler -- "Adjusts Threads" --> WorkerPool
+    end
+
+    Dashboard[Next.js Dashboard] -- "WebSockets" --> API
+    API -- "Real-time Stats" --> Dashboard
 ```
 
-## Directory Structure
+---
 
-```text
-pulsar/
-├── client/           # Next.js Dashboard Frontend
-├── server/           # Express.js Backend & Workers
-│   ├── src/
-│   │   ├── config/   # Infrastructure Connections
-│   │   ├── controllers/ # Request Handlers
-│   │   ├── services/ # Business Logic (Outbox, Queue, etc.)
-│   │   └── worker.ts # Worker Entry Point
-├── docs/             # Central Documentation
-└── docker-compose.yml
-```
+## 🧩 Core Components
 
-## Core Patterns
+### 1. API Server (`/server/src/app.ts`)
+The gateway for all interactions. It provides REST endpoints for:
+- **Job Creation**: Validating and saving jobs to PostgreSQL.
+- **Management**: Pausing, resuming, or cancelling jobs.
+- **Monitoring**: Exposing real-time telemetry via Socket.io.
 
-### 1. Transactional Outbox
-Ensures atomicity between database updates and external side-effects (Redis enqueues).
+### 2. Transactional Outbox (`/server/src/services/outbox.service.ts`)
+The "Secret Sauce" for reliability. Instead of sending a job directly to Redis (which might fail if Redis is down), we save the "intent" to enqueue the job in the same database transaction as the job itself.
 
-```mermaid
-sequenceDiagram
-    participant App as Application Logic
-    participant DB as PostgreSQL
-    participant OB as Outbox Table
-    participant Relay as Outbox Relay
-    participant Redis as Redis Queue
+### 3. Outbox Relay / Scheduler (`/server/src/services/scheduler.service.ts`)
+A lightweight process that polls the Outbox table. It uses **PostgreSQL Advisory Locks** or `SKIP LOCKED` queries to ensure that multiple relay instances don't process the same entry twice. Once a job is successfully enqueued in Redis, it marks the outbox entry as `processed`.
 
-    App->>DB: Start Transaction
-    App->>DB: Save Job Record
-    App->>OB: Save side-effect (enqueue)
-    App->>DB: Commit Transaction
-    
-    Relay->>OB: Poll Pending
-    Relay->>Redis: Enqueue Job
-    Relay->>OB: Mark Processed
-```
+### 4. Redis Priority Queue
+We use Redis **Sorted Sets (`ZSET`)** to manage the queue. 
+- **Scores**: Calculated based on priority and submission time.
+- **Atomicity**: We use Lua scripts or simple `ZADD` operations to ensure queue integrity.
 
-### 2. Priority Queueing
-Jobs are ranked in Redis Sorted Sets using a score calculated from priority and timestamp.
+### 5. Worker Pool (`/server/src/worker.ts`)
+Independent processes or threads that execute the actual jobs. 
+- **Blocking Pop**: Uses `BZPOPMIN` to wait for jobs without consuming CPU.
+- **Isolation**: Each job runs in a protected try-catch block to ensure worker stability.
 
-```mermaid
-sequenceDiagram
-    participant Worker as Worker Instance
-    participant Redis as Redis Priority Queue
-    participant DB as PostgreSQL
+### 6. Autoscaler (`/server/src/services/autoscaler.service.ts`)
+Monitors the queue length in Redis. If the queue grows beyond a threshold, it signals the Worker Pool to increase concurrency. If the queue is empty, it scales down to save resources.
 
-    Worker->>Redis: BZPOPMIN (Lowest Score)
-    Redis-->>Worker: Job ID
-    Worker->>DB: Update Status: processing
-    Note over Worker: Execute Task
-    Worker->>DB: Update Status: completed
-```
+---
 
-## Scalability & Reliability
-- **Horizontal Scaling**: Workers can be scaled independently using Docker.
-- **Autoscaling**: A built-in service monitors queue depths and spawns/terminates concurrent worker threads.
-- **Resilience**: Failed jobs use **Exponential Backoff** and are stored in a **Delayed Queue** until ready for retry.
-- **Reaper**: A secondary fallback process that ensures no job remains "stale" in a pending state forever.
+## 🔄 Data Flow: The Journey of a Job
+
+1.  **Submission**: Client sends a POST request to `/api/jobs`.
+2.  **Persistence**: API starts a DB transaction, saves the `Job` record, and adds an `Outbox` entry.
+3.  **Relay**: The Scheduler picks up the `Outbox` entry and pushes the Job ID to Redis.
+4.  **Queueing**: Redis places the Job ID in a Sorted Set based on its priority score.
+5.  **Execution**: An idle Worker performs a blocking pop from Redis, fetches job details from DB, and executes the task.
+6.  **Finalization**: Worker updates the Job status in DB to `completed` or `failed`.
+7.  **Telemetry**: Every status change is broadcasted via WebSockets to the Dashboard.
+
+---
+
+## 📈 Scalability Strategies
+
+- **Vertical**: Increase worker concurrency (threads) within a single container.
+- **Horizontal**: Spin up multiple Worker containers. Each container connects to the same Redis/PostgreSQL.
+- **Regional**: Pulsar can be deployed across regions, though latency between Workers and the DB/Redis should be minimized.

@@ -1,89 +1,101 @@
-# API Reference
+# 🔌 API Reference
 
-All requests and responses use JSON. The base URL (when running locally) is `http://localhost:3000`.
+The Pulsar API is the central hub for managing jobs and workers. It provides both a RESTful interface for management and a WebSocket interface for real-time telemetry.
 
-## 1. System Health & Stats
-
-### `GET /health`
-Returns the status of the server and connectivity to downstream services.
-
-**Response:**
-```json
-{
-  "status": "ok",
-  "services": {
-    "database": "connected",
-    "redis": "connected"
-  },
-  "uptime": "123.45s"
-}
-```
-
-### `GET /api/stats`
-Returns aggregated system metrics including job distribution, queue depths, and outbox relay status.
-
-**Response:**
-```json
-{
-  "jobs": { "total": 100, "pending": 10, "processing": 5, "completed": 80, "failed": 5 },
-  "outbox": { "total": 105, "pending": 0, "processed": 105, "failed": 0 },
-  "queues": { "depths": { "default": 2 } },
-  "throughput_last_60s": 12
-}
-```
+**Base URL**: `http://localhost:3000`
 
 ---
 
-## 2. Job Management
+## 🛰️ REST API
 
-### `POST /api/jobs`
+### 1. Job Management
+
+#### `POST /api/jobs`
 Creates a new background job.
+- **Body**:
+  ```json
+  {
+    "job_type": "email_send",
+    "payload": { "to": "user@example.com" },
+    "priority": 5,
+    "queue_name": "default"
+  }
+  ```
+- **Response**: `201 Created` with the job object.
 
-| Field | Type | Required | Description |
-| :--- | :--- | :--- | :--- |
-| `job_type` | `string` | Yes | Type of job (e.g., `email_send`) |
-| `payload` | `object` | Yes | Data needed for the job |
-| `queue_name`| `string` | No | Target queue. |
-| `priority` | `number` | No | 0-10. Higher is more urgent. |
-| `run_at` | `ISO Date`| No | Scheduled execution time. |
+#### `GET /api/jobs`
+Retrieves a paginated list of jobs.
+- **Query Params**: `status`, `queue`, `limit`, `offset`.
 
-### `GET /api/jobs`
-Fetch a list of recent jobs. Supports filtering by `status` and `queue`.
-
----
-
-## 3. Worker Control
-
-### `GET /api/workers`
-List all registered worker instances and their activity status.
-
-### `POST /api/workers/start`
-Dynamically start a new worker thread on a specific queue.
-
-### `POST /api/workers/stop`
-Stop a running worker thread by ID.
+#### `POST /api/jobs/:id/retry`
+Manually triggers a retry for a failed job.
 
 ---
 
-## Error Handling
+### 2. Worker Registry
 
-Pulsar use standard HTTP status codes. Errors are returned in a consistent format:
+#### `GET /api/workers`
+Returns all active and recently inactive worker instances.
+
+#### `POST /api/workers/stop`
+Sends a signal to a worker node to stop processing.
+- **Body**: `{ "worker_id": "string" }`
+
+---
+
+### 3. System Health
+
+#### `GET /health`
+Infrastructure health check. Returns connectivity status for PostgreSQL and Redis.
+
+#### `GET /api/stats`
+Aggregated metrics for the dashboard.
+
+---
+
+## ⚡ WebSocket API (Socket.io)
+
+The dashboard connects via WebSockets to receive real-time updates.
+
+### Server-to-Client Events
+
+| Event | Payload | Description |
+| :--- | :--- | :--- |
+| `stats:update` | `StatsObject` | Periodic system-wide performance metrics. |
+| `job:status` | `JobUpdate` | Triggered whenever a job changes status. |
+| `worker:heartbeat`| `WorkerInfo[]`| Broadcasts the current state of all workers. |
+| `worker:new` | `WorkerInfo` | Triggered when a new worker node joins. |
+
+### Client-to-Server Events
+
+| Event | Payload | Description |
+| :--- | :--- | :--- |
+| `job:create` | `JobCreate` | Create a job via WebSocket instead of REST. |
+| `worker:scale` | `ScaleOptions`| Request the autoscaler to adjust concurrency. |
+
+---
+
+## 🛠️ Error Format
+
+All errors follow a standard RFC-compliant JSON structure:
+
+```json
+{
+  "error": "Not Found",
+  "message": "Job with ID 123 does not exist",
+  "statusCode": 404,
+  "timestamp": "2024-03-20T10:00:00Z"
+}
+```
 
 ```mermaid
 sequenceDiagram
     participant Client
     participant API
-    participant Middleware
-    Client->>API: Invalid Request
-    API->>Middleware: throw Error()
-    Middleware-->>Client: 400 Bad Request + Error JSON
-```
-
-**Error JSON:**
-```json
-{
-  "error": "Validation Error",
-  "message": "job_type is required",
-  "statusCode": 400
-}
+    participant DB
+    Client->>API: POST /api/jobs
+    API->>DB: INSERT (Transactional)
+    DB-->>API: Success
+    API-->>Client: 201 Created
+    API-->>WS: Broadcast 'job:status'
 ```
