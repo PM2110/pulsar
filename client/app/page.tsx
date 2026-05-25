@@ -2,21 +2,12 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { apiService, socket } from "./lib/api.service";
+import { Acc, Tip } from "./components/Accordion";
+import { useTheme } from "./components/ThemeProvider";
 
 interface Stats {
-  jobs: {
-    total: number;
-    pending: number;
-    processing: number;
-    completed: number;
-    failed: number;
-  };
-  outbox: {
-    total: number;
-    pending: number;
-    processed: number;
-    failed: number;
-  };
+  jobs: { total: number; pending: number; processing: number; completed: number; failed: number };
+  outbox: { total: number; pending: number; processed: number; failed: number };
   queues: {
     depths: Record<string, number>;
     delayed: Record<string, number>;
@@ -24,698 +15,320 @@ interface Stats {
     delayedJobs: Record<string, { id: string; runAt: number }[]>;
     processing: Record<string, { id: string; workerId: string | null; workerHostname: string | null }[]>;
   };
-  attempts: {
-    total: number;
-    successful: number;
-    failed: number;
-    avg_execution_ms: number;
-    avg_latency_ms: number;
-  };
+  attempts: { total: number; successful: number; failed: number; avg_execution_ms: number; avg_latency_ms: number };
   throughput_last_60s: number;
   stuck_jobs_count: number;
 }
 
 interface FeedEvent {
-  type: string;
-  job_id: string;
-  job_type: string;
-  queue_name: string;
-  status: string;
-  prev_status: string;
-  attempts: number;
-  max_attempts: number;
-  error: string | null;
-  timestamp: string;
+  type: string; job_id: string; job_type: string; queue_name: string;
+  status: string; prev_status: string; attempts: number; max_attempts: number;
+  error: string | null; timestamp: string;
 }
 
-interface SeedFormState {
-  count: number;
-  queue_name: string;
-  failure_mode: string;
-}
-
-const STATUS_CONFIG: Record<string, { label: string; badgeClass: string; pulseClass: string }> = {
-  pending: { label: "Pending", badgeClass: "badge-pending", pulseClass: "pulse-gray" },
-  processing: { label: "Processing", badgeClass: "badge-processing", pulseClass: "pulse-white" },
-  completed: { label: "Completed", badgeClass: "badge-completed", pulseClass: "pulse-green" },
-  failed: { label: "Failed", badgeClass: "badge-failed", pulseClass: "pulse-red" },
+const STATUS_CFG: Record<string, { badge: string; pulse: string }> = {
+  pending: { badge: "badge-pending", pulse: "pulse-gray" },
+  processing: { badge: "badge-processing", pulse: "pulse-white" },
+  completed: { badge: "badge-completed", pulse: "pulse-green" },
+  failed: { badge: "badge-failed", pulse: "pulse-red" },
 };
-
 const QUEUES = ["notifications", "media", "default"];
-const QUEUE_COLORS: Record<string, string> = {
-  notifications: "rgba(255,255,255,0.45)",
-  media: "rgba(255,255,255,0.25)",
-  default: "rgba(255,255,255,0.12)",
+const Q_ICON: Record<string, string> = { notifications: "🔔", media: "🎬", default: "📦" };
+const Q_DESC: Record<string, string> = {
+  notifications: "Email, SMS & push delivery",
+  media: "Image resize, video transcode",
+  default: "Exports, reports & maintenance",
 };
 
-function AnimatedCounter({ value }: { value: number }) {
-  const [display, setDisplay] = useState(value);
-  const prev = useRef(value);
-
+function Num({ value }: { value: number }) {
+  const [d, setD] = useState(value);
+  const p = useRef(value);
   useEffect(() => {
-    const start = prev.current;
-    const end = value;
-    if (start === end) return;
-    const diff = end - start;
-    const duration = 400;
-    const steps = 20;
-    let step = 0;
-    const timer = setInterval(() => {
-      step++;
-      setDisplay(Math.round(start + diff * (step / steps)));
-      if (step >= steps) {
-        clearInterval(timer);
-        prev.current = end;
-      }
-    }, duration / steps);
-    return () => clearInterval(timer);
+    const s = p.current, e = value;
+    if (s === e) return;
+    const diff = e - s; let step = 0;
+    const t = setInterval(() => { step++; setD(Math.round(s + diff * (step / 18))); if (step >= 18) { clearInterval(t); p.current = e; } }, 22);
+    return () => clearInterval(t);
   }, [value]);
-
-  return <span>{display.toLocaleString()}</span>;
+  return <>{d.toLocaleString()}</>;
 }
 
 export default function DashboardPage() {
+  const { theme, toggleTheme } = useTheme();
   const [stats, setStats] = useState<Stats | null>(null);
   const [feed, setFeed] = useState<FeedEvent[]>([]);
   const [seeding, setSeeding] = useState(false);
-  const [seedForm, setSeedForm] = useState<SeedFormState>({
-    count: 10,
-    queue_name: "",
-    failure_mode: "",
-  });
+  const [seedForm, setSeedForm] = useState({ count: 10, queue_name: "", failure_mode: "" });
   const [seedMsg, setSeedMsg] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
-  // Live clock — ticks every second so all time displays update without refetching
   const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
+  const fetchStats = useCallback(async () => { try { setStats(await apiService.getStats()); } catch {} }, []);
+  useEffect(() => { fetchStats(); socket.on("stats_update", setStats); return () => { socket.off("stats_update"); }; }, [fetchStats]);
   useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
-  const fetchStats = useCallback(async () => {
-    try {
-      const data = await apiService.getStats();
-      setStats(data);
-    } catch { }
-  }, []);
-
-  // Fetch initially, then rely on WebSocket for live updates
-  useEffect(() => {
-    fetchStats();
-
-    socket.on("stats_update", (data: Stats) => {
-      setStats(data);
-    });
-
-    return () => {
-      socket.off("stats_update");
+    const h = (ev: FeedEvent) => {
+      const e = { ...ev, timestamp: ev.timestamp || new Date().toISOString() };
+      setFeed(p => [e, ...p].slice(0, 50));
+      setTimeout(() => feedRef.current?.scrollTo({ top: 0, behavior: "smooth" }), 50);
     };
-  }, [fetchStats]);
-
-  // WebSocket feed
-  useEffect(() => {
-    const handleJobUpdate = (ev: FeedEvent) => {
-      // Set timestamp dynamically since worker might just pass basic data
-      const eventWithTime: FeedEvent = {
-        ...ev,
-        timestamp: ev.timestamp || new Date().toISOString()
-      };
-
-      setFeed((prev) => {
-        const next = [eventWithTime, ...prev].slice(0, 60);
-        return next;
-      });
-      setTimeout(() => {
-        feedRef.current?.scrollTo({ top: 0, behavior: "smooth" });
-      }, 50);
-    };
-
-    socket.on("job_update", handleJobUpdate);
-    return () => {
-      socket.off("job_update", handleJobUpdate);
-    };
+    socket.on("job_update", h); return () => { socket.off("job_update", h); };
   }, []);
 
   const handleSeed = async () => {
-    setSeeding(true);
-    setSeedMsg(null);
+    setSeeding(true); setSeedMsg(null);
     try {
       const body: Record<string, unknown> = { count: seedForm.count };
       if (seedForm.queue_name) body.queue_name = seedForm.queue_name;
       if (seedForm.failure_mode) body.failure_mode = seedForm.failure_mode;
-      const data = await apiService.seedJobs(body);
-      setSeedMsg(`✓ Seeded ${data.count} jobs successfully`);
-      fetchStats();
-    } catch {
-      setSeedMsg("✗ Failed to seed jobs");
-    } finally {
-      setSeeding(false);
-    }
+      const r = await apiService.seedJobs(body);
+      setSeedMsg(`✓ Seeded ${r.count} jobs`); fetchStats();
+    } catch { setSeedMsg("✗ Failed to seed jobs"); }
+    finally { setSeeding(false); }
   };
 
-  const total = stats?.jobs.total || 0;
-  const statItems = [
-    { label: "Pending", value: stats?.jobs.pending ?? 0, color: "var(--pending)", dot: "pulse-gray" },
-    { label: "Processing", value: stats?.jobs.processing ?? 0, color: "var(--processing)", dot: "pulse-white" },
-    { label: "Completed", value: stats?.jobs.completed ?? 0, color: "#4ade80", dot: "pulse-green" },
-    { label: "Failed", value: stats?.jobs.failed ?? 0, color: "#f87171", dot: "pulse-red" },
+  const t = stats?.jobs.total || 0;
+  const items = [
+    { k: "Pending", v: stats?.jobs.pending ?? 0, c: "var(--pending)", d: "pulse-gray", tip: "Waiting to be picked up by a worker" },
+    { k: "Processing", v: stats?.jobs.processing ?? 0, c: "var(--processing)", d: "pulse-white", tip: "Currently being executed by workers" },
+    { k: "Completed", v: stats?.jobs.completed ?? 0, c: "var(--completed)", d: "pulse-green", tip: "Successfully finished" },
+    { k: "Failed", v: stats?.jobs.failed ?? 0, c: "var(--failed)", d: "pulse-red", tip: "Exhausted all retry attempts" },
   ];
-
-
+  const wt = (runAt: number) => { const s = Math.max(0, Math.round((now - runAt) / 1000)); return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`; };
+  const dl = (runAt: number) => { const s = Math.max(0, Math.round((runAt - now) / 1000)); return s >= 60 ? `in ${Math.floor(s / 60)}m ${s % 60}s` : `in ${s}s`; };
 
   return (
-    <div style={{ padding: "28px 32px", maxWidth: 1200 }}>
-      {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: "var(--text-primary)", marginBottom: 4 }}>
-          Dashboard
-        </h1>
-        <p style={{ fontSize: 13, color: "var(--text-muted)" }}>
-          Live overview of job processing, queue health, and throughput
-        </p>
+    <div className="page">
+      {/* ─── ROW 1: Header ─── */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-sub">Real-time system overview · WebSocket connected</p>
+        </div>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <span className="chip"><div className="pulse-dot pulse-green" style={{ width: 6, height: 6 }} /> Live</span>
+          <button className="theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">{theme === "dark" ? "☀️" : "🌙"}</button>
+        </div>
       </div>
 
-      {/* Stuck Jobs Warning */}
+      {/* ─── ALERT ROW ─── */}
       {stats && stats.stuck_jobs_count > 0 && (
-        <div
-          style={{
-            background: "rgba(248, 113, 113, 0.1)",
-            border: "1px solid rgba(248, 113, 113, 0.3)",
-            borderRadius: 10,
-            padding: "16px 20px",
-            marginBottom: 24,
-            display: "flex",
-            alignItems: "center",
-            gap: 16,
-            animation: "soft-blink 2s ease-in-out infinite"
-          }}
-        >
-          <div style={{ fontSize: 24 }}>⚠️</div>
+        <div style={{ background: "var(--red-soft)", border: "1px solid var(--red)", borderRadius: "var(--radius-lg)", padding: "14px 20px", marginBottom: 20, display: "flex", alignItems: "center", gap: 14, animation: "soft-blink 2s ease-in-out infinite" }}>
+          <span style={{ fontSize: 22 }}>⚠️</span>
           <div>
-            <div style={{ fontWeight: 700, color: "#f87171", fontSize: 15 }}>Stuck Jobs Detected</div>
-            <div style={{ fontSize: 13, color: "rgba(248, 113, 113, 0.8)" }}>
-              {stats.stuck_jobs_count} job(s) have been in pending state for more than 60 seconds. This might indicate worker capacity issues or queue stalls.
-            </div>
+            <div style={{ fontWeight: 700, color: "var(--red)", fontSize: 13 }}>Stuck Jobs Detected</div>
+            <div style={{ fontSize: 12, color: "var(--text-muted)" }}>{stats.stuck_jobs_count} job(s) pending 60s+ — possible worker capacity issue</div>
           </div>
         </div>
       )}
 
-      {/* Stat Cards */}
+      {/* ─── ROW 2: Job Status Cards ─── */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14, marginBottom: 24 }}>
-        {statItems.map((s) => (
-          <div key={s.label} className="stat-card">
-            <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
-              <div className={`pulse-dot ${s.dot}`} style={{ width: 7, height: 7 }} />
-              <span style={{ fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>{s.label}</span>
+        {items.map(s => (
+          <Tip key={s.k} text={s.tip}>
+            <div className="stat-card" style={{ width: "100%" }}>
+              <div className="stat-card-label"><div className={`pulse-dot ${s.d}`} /> {s.k}</div>
+              <div className="stat-value" style={{ color: s.c }}><Num value={s.v} /></div>
+              <div className="stat-sub">{t > 0 ? Math.round((s.v / t) * 100) : 0}% of {t.toLocaleString()} total</div>
             </div>
-            <div className="stat-value" style={{ color: s.color }}>
-              <AnimatedCounter value={s.value} />
-            </div>
-            <div style={{ marginTop: 8, fontSize: 11, color: "var(--text-muted)" }}>
-              {total > 0 ? Math.round((s.value / total) * 100) : 0}% of total
-            </div>
-          </div>
+          </Tip>
         ))}
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 16, marginBottom: 16 }}>
-        {/* Job distribution bar */}
-        <div className="card">
-          <div className="section-header">
-            <span className="section-title">Job Distribution</span>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{total} total</span>
-          </div>
-          <div
-            style={{
-              height: 10,
-              borderRadius: 999,
-              overflow: "hidden",
-              background: "rgba(255,255,255,0.05)",
-              display: "flex",
-              marginBottom: 14,
-            }}
-          >
-            {statItems.map((s) => (
-              <div
-                key={s.label}
-                style={{
-                  width: `${total > 0 ? (s.value / total) * 100 : 0}%`,
-                  background: s.color,
-                  transition: "width 0.5s ease",
-                }}
-              />
-            ))}
-          </div>
-          <div style={{ display: "flex", gap: 18 }}>
-            {statItems.map((s) => (
-              <div key={s.label} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
-                <div style={{ width: 8, height: 8, borderRadius: 2, background: s.color }} />
-                <span style={{ color: "var(--text-muted)" }}>{s.label}</span>
-                <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{s.value}</span>
-              </div>
-            ))}
-          </div>
+      {/* ─── ROW 3: Distribution Bar (standalone) ─── */}
+      <div className="card" style={{ marginBottom: 24, padding: "16px 22px" }}>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 10 }}>
+          <span style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)" }}>Job Distribution</span>
+          <span className="chip">{t} total</span>
         </div>
-
-        {/* Performance metrics */}
-        <div className="card">
-          <div className="section-header">
-            <span className="section-title">Performance</span>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>rolling avg</span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-            {[
-              { label: "Throughput / 60s", value: stats?.throughput_last_60s ?? 0, unit: "jobs", highlight: true },
-              { label: "Avg Execution", value: stats?.attempts.avg_execution_ms ?? 0, unit: "ms" },
-              { label: "Avg Queue Latency", value: stats?.attempts.avg_latency_ms ?? 0, unit: "ms" },
-              { label: "Total Attempts", value: stats?.attempts.total ?? 0, unit: "" },
-            ].map((m) => (
-              <div
-                key={m.label}
-                style={{
-                  background: "rgba(255,255,255,0.03)",
-                  borderRadius: 8,
-                  padding: "12px 14px",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <div style={{ fontSize: 11, color: "var(--text-muted)", marginBottom: 4 }}>{m.label}</div>
-                <div
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 700,
-                    color: m.highlight ? "var(--completed)" : "var(--text-primary)",
-                  }}
-                >
-                  <AnimatedCounter value={Math.round(m.value)} />
-                  {m.unit && <span style={{ fontSize: 12, fontWeight: 400, marginLeft: 3, color: "var(--text-muted)" }}>{m.unit}</span>}
-                </div>
-              </div>
-            ))}
-          </div>
+        <div style={{ height: 8, borderRadius: 4, overflow: "hidden", background: "var(--bg-inset)", display: "flex", gap: 2, marginBottom: 12 }}>
+          {items.map(s => <div key={s.k} style={{ width: `${t > 0 ? (s.v / t) * 100 : 0}%`, background: s.c, borderRadius: 3, transition: "width 0.5s" }} />)}
         </div>
-
-        {/* 
-            Outbox Relay Pipeline 
-            Displays the status of the Transactional Outbox.
-            This represents the intermediate step between DB job creation and Redis enqueuing.
-        */}
-        <div className="card">
-          <div className="section-header">
-            <span className="section-title">Outbox Relay Pipeline</span>
-            <span style={{ fontSize: 12, color: "var(--text-muted)" }}>{stats?.outbox.total || 0} total events</span>
-          </div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 12 }}>
-            {[
-              { label: "Pipeline Pending", value: stats?.outbox.pending ?? 0, color: "var(--text-secondary)" },
-              { label: "Relayed Success", value: stats?.outbox.processed ?? 0, color: "var(--completed)" },
-              { label: "Relay Failed", value: stats?.outbox.failed ?? 0, color: "var(--failed)" },
-            ].map((m) => (
-              <div
-                key={m.label}
-                style={{
-                  background: "rgba(255,255,255,0.03)",
-                  borderRadius: 8,
-                  padding: "12px 14px",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <div style={{ fontSize: 10, color: "var(--text-muted)", marginBottom: 4, textTransform: "uppercase", letterSpacing: "0.05em" }}>{m.label}</div>
-                <div
-                  style={{
-                    fontSize: 20,
-                    fontWeight: 700,
-                    color: m.color,
-                  }}
-                >
-                  <AnimatedCounter value={m.value} />
-                </div>
-              </div>
-            ))}
-          </div>
-          <div style={{ marginTop: 14, fontSize: 11, color: "var(--text-faint)", fontStyle: "italic" }}>
-            Ensures atomic job creation between DB and Redis
-          </div>
+        <div style={{ display: "flex", gap: 24 }}>
+          {items.map(s => (
+            <div key={s.k} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11 }}>
+              <div style={{ width: 8, height: 8, borderRadius: 2, background: s.c }} />
+              <span style={{ color: "var(--text-muted)" }}>{s.k}</span>
+              <span style={{ color: "var(--text-secondary)", fontWeight: 700 }}>{s.v}</span>
+            </div>
+          ))}
         </div>
       </div>
 
-      {/* Queue Lanes — full width */}
+      {/* ─── ROW 4: Performance Metrics (accordion) ─── */}
       <div style={{ marginBottom: 16 }}>
-        {/* Queue Lanes */}
-        <div className="card">
-          <div className="section-header">
-            <span className="section-title">Queue Lanes</span>
-            <span style={{ fontSize: 11, color: "var(--text-muted)" }}>live · pending / processing / delayed</span>
+        <Acc title="Performance Metrics" icon="📊" desc="Throughput, execution time, and queue latency" badge={<span className="acc-badge">{stats?.throughput_last_60s ?? 0} jobs/min</span>} open={true}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12 }}>
+            {[
+              { l: "Throughput / 60s", v: stats?.throughput_last_60s ?? 0, u: "jobs", c: "var(--green)", tip: "Jobs completed in the last 60 seconds" },
+              { l: "Avg Execution", v: stats?.attempts.avg_execution_ms ?? 0, u: "ms", c: "var(--text-primary)", tip: "Average worker execution time" },
+              { l: "Avg Queue Latency", v: stats?.attempts.avg_latency_ms ?? 0, u: "ms", c: "var(--text-primary)", tip: "Average wait time before processing" },
+              { l: "Total Attempts", v: stats?.attempts.total ?? 0, u: "", c: "var(--text-primary)", tip: "Sum of all execution attempts" },
+            ].map(m => (
+              <Tip key={m.l} text={m.tip}>
+                <div className="inset-row" style={{ width: "100%", textAlign: "center" }}>
+                  <div style={{ fontSize: 10, color: "var(--text-faint)", marginBottom: 8, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{m.l}</div>
+                  <div style={{ fontSize: 26, fontWeight: 700, color: m.c, fontVariantNumeric: "tabular-nums" }}>
+                    <Num value={Math.round(m.v)} />
+                    {m.u && <span style={{ fontSize: 11, fontWeight: 500, marginLeft: 3, color: "var(--text-faint)" }}>{m.u}</span>}
+                  </div>
+                </div>
+              </Tip>
+            ))}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
-            {QUEUES.map((q) => {
+        </Acc>
+      </div>
+
+      {/* ─── ROW 5: Outbox Pipeline (accordion) ─── */}
+      <div style={{ marginBottom: 16 }}>
+        <Acc title="Outbox Relay Pipeline" icon="📡" desc="Transactional outbox between DB and Redis" badge={<span className="acc-badge">{stats?.outbox.total || 0}</span>}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12 }}>
+            {[
+              { l: "Pending", v: stats?.outbox.pending ?? 0, c: "var(--text-secondary)" },
+              { l: "Relayed", v: stats?.outbox.processed ?? 0, c: "var(--green)" },
+              { l: "Failed", v: stats?.outbox.failed ?? 0, c: "var(--red)" },
+            ].map(m => (
+              <div key={m.l} className="inset-row" style={{ textAlign: "center" }}>
+                <div style={{ fontSize: 10, color: "var(--text-faint)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.05em", fontWeight: 600 }}>{m.l}</div>
+                <div style={{ fontSize: 24, fontWeight: 700, color: m.c }}><Num value={m.v} /></div>
+              </div>
+            ))}
+          </div>
+        </Acc>
+      </div>
+
+      {/* ─── ROW 6: Queue Lanes (each queue = big card) ─── */}
+      <div style={{ marginBottom: 16 }}>
+        <Acc title="Queue Lanes" icon="🚦" desc="Live queue depths, processing, and delayed jobs" badge={<span className="acc-badge">{QUEUES.length} queues</span>} open={true}>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
+            {QUEUES.map(q => {
               const depth = stats?.queues.depths[q] ?? 0;
               const delayed = stats?.queues.delayed[q] ?? 0;
-              const processingJobs = stats?.queues.processing[q] ?? [];
-              const readyItems = stats?.queues.readyJobs[q] ?? [];
-              const delayedItems = stats?.queues.delayedJobs[q] ?? [];
+              const proc = stats?.queues.processing[q] ?? [];
+              const ready = stats?.queues.readyJobs[q] ?? [];
+              const delItems = stats?.queues.delayedJobs[q] ?? [];
+              const tot = depth + delayed + proc.length;
+              const hasAny = tot > 0;
 
-              const pendingOverflow = Math.max(0, depth - readyItems.length);
-              const delayedOverflow = Math.max(0, delayed - delayedItems.length);
-              const hasAnything = depth > 0 || delayed > 0 || processingJobs.length > 0;
-
-              // Helper: format a short worker label from workerId / hostname
-              const workerLabel = (workerId: string | null, hostname: string | null): string => {
-                if (workerId) {
-                  // e.g. "notifications-worker" -> strip queue prefix -> "worker"
-                  // use last segment after last dash-number or just shorten
-                  return workerId.replace(/-worker$/, '').replace('notifications', 'notif').slice(0, 10);
-                }
-                if (hostname) return hostname.slice(0, 6);
-                return 'worker';
-              };
-
-              // Format wait time for ready jobs (how long they've been in the queue)
-              const waitLabel = (runAt: number): string => {
-                const secs = Math.max(0, Math.round((now - runAt) / 1000));
-                if (secs >= 60) return `${Math.floor(secs / 60)}m ${secs % 60}s`;
-                return `${secs}s`;
-              };
-
-              // Format countdown for delayed jobs
-              const delayLabel = (runAt: number): string => {
-                const secs = Math.max(0, Math.round((runAt - now) / 1000));
-                if (secs >= 60) return `in ${Math.floor(secs / 60)}m ${secs % 60}s`;
-                return `in ${secs}s`;
-              };
               return (
-                <div key={q}>
-                  {/* Queue header */}
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12 }}>
-                    <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 700, color: "var(--text-secondary)" }}>
-                      queue:{q}
-                    </span>
-                    <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-                    <div style={{ display: "flex", gap: 10, fontSize: 11 }}>
-                      {processingJobs.length > 0 && <span style={{ color: "rgba(74,222,128,0.8)" }}>{processingJobs.length} processing</span>}
-                      {depth > 0 && <span style={{ color: "var(--text-muted)" }}>{depth} ready</span>}
-                      {delayed > 0 && <span style={{ color: "rgba(248,113,113,0.85)" }}>{delayed} delayed</span>}
-                      {!hasAnything && <span style={{ color: "var(--text-faint)" }}>idle</span>}
+                <div key={q} className="queue-card">
+                  {/* Header */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 16 }}>
+                    <div className="queue-icon">{Q_ICON[q]}</div>
+                    <div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{q}</div>
+                      <div style={{ fontSize: 11, color: "var(--text-faint)" }}>{Q_DESC[q]}</div>
                     </div>
                   </div>
 
-                  {/* Main queue cells */}
-                  {hasAnything && (
-                    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                      {/* Active + Ready queue */}
-                      {(processingJobs.length > 0 || readyItems.length > 0) && (
-                        <div>
-                          <div style={{ fontSize: 10, color: "var(--text-faint)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Ready Queue</div>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            {/* Processing cells — green with worker label */}
-                            {processingJobs.map((job) => (
-                              <div
-                                key={`proc-${job.id}`}
-                                title={`Processing job #${job.id} · ${job.workerId ?? 'worker'} (${job.workerHostname ?? ''})`}
-                                style={{
-                                  padding: "6px 10px",
-                                  borderRadius: 6,
-                                  background: "rgba(74,222,128,0.08)",
-                                  border: "1px solid rgba(74,222,128,0.3)",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 2,
-                                  minWidth: 80,
-                                  animation: "soft-blink 2s ease-in-out infinite",
-                                }}
-                              >
-                                <span style={{ fontSize: 9, color: "rgba(74,222,128,0.6)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                                  {workerLabel(job.workerId, job.workerHostname)}
-                                </span>
-                                <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 600, color: "rgba(74,222,128,0.9)" }}>#{job.id}</span>
-                              </div>
-                            ))}
+                  {/* 3 mini stats */}
+                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 14 }}>
+                    <Tip text="Actively being processed"><div className="queue-mini-stat" style={{ width: "100%" }}><div className="queue-mini-stat-label">Active</div><div className="queue-mini-stat-value" style={{ color: proc.length > 0 ? "var(--accent)" : "var(--text-faint)" }}>{proc.length}</div></div></Tip>
+                    <Tip text="Ready and waiting"><div className="queue-mini-stat" style={{ width: "100%" }}><div className="queue-mini-stat-label">Ready</div><div className="queue-mini-stat-value" style={{ color: depth > 0 ? "var(--text-primary)" : "var(--text-faint)" }}>{depth}</div></div></Tip>
+                    <Tip text="Scheduled for later"><div className="queue-mini-stat" style={{ width: "100%" }}><div className="queue-mini-stat-label">Delayed</div><div className="queue-mini-stat-value" style={{ color: delayed > 0 ? "var(--red)" : "var(--text-faint)" }}>{delayed}</div></div></Tip>
+                  </div>
 
-                            {/* Ready/Pending cells — neutral with wait time */}
-                            {readyItems.map((item, i) => (
-                              <div
-                                key={`ready-${item.id}-${i}`}
-                                title={`Pending job #${item.id} · waiting since ${new Date(item.runAt).toLocaleTimeString()}`}
-                                style={{
-                                  padding: "6px 10px",
-                                  borderRadius: 6,
-                                  background: "rgba(255,255,255,0.03)",
-                                  border: "1px solid var(--border-strong)",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 2,
-                                  minWidth: 80,
-                                }}
-                              >
-                                <span style={{ fontSize: 9, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.05em" }}>wait {waitLabel(item.runAt)}</span>
-                                <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 600, color: "var(--text-secondary)" }}>#{item.id}</span>
-                              </div>
-                            ))}
-
-                            {/* Overflow badge */}
-                            {pendingOverflow > 0 && (
-                              <div style={{
-                                padding: "6px 10px",
-                                borderRadius: 6,
-                                background: "rgba(255,255,255,0.02)",
-                                border: "1px dashed var(--border)",
-                                display: "flex",
-                                alignItems: "center",
-                                fontSize: 11,
-                                color: "var(--text-faint)",
-                                minWidth: 60,
-                              }}>
-                                +{pendingOverflow} more
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Delayed queue */}
-                      {delayedItems.length > 0 && (
-                        <div>
-                          <div style={{ fontSize: 10, color: "var(--text-faint)", marginBottom: 6, textTransform: "uppercase", letterSpacing: "0.06em" }}>Delayed Queue</div>
-                          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                            {delayedItems.map((item, i) => (
-                              <div
-                                key={`del-${item.id}-${i}`}
-                                title={`Job #${item.id} — runs at ${new Date(item.runAt).toLocaleTimeString()}`}
-                                style={{
-                                  padding: "6px 10px",
-                                  borderRadius: 6,
-                                  background: "rgba(248,113,113,0.06)",
-                                  border: "1px solid rgba(248,113,113,0.25)",
-                                  display: "flex",
-                                  flexDirection: "column",
-                                  gap: 2,
-                                  minWidth: 80,
-                                }}
-                              >
-                                <span style={{ fontSize: 9, color: "rgba(248,113,113,0.55)", textTransform: "uppercase", letterSpacing: "0.05em" }}>delayed</span>
-                                <span style={{ fontSize: 12, fontFamily: "monospace", fontWeight: 600, color: "rgba(248,113,113,0.8)" }}>#{item.id}</span>
-                                <span style={{ fontSize: 9, color: "rgba(248,113,113,0.5)" }}>{delayLabel(item.runAt)}</span>
-                              </div>
-                            ))}
-                            {delayedOverflow > 0 && (
-                              <div style={{
-                                padding: "6px 10px",
-                                borderRadius: 6,
-                                background: "rgba(248,113,113,0.03)",
-                                border: "1px dashed rgba(248,113,113,0.2)",
-                                display: "flex",
-                                alignItems: "center",
-                                fontSize: 11,
-                                color: "rgba(248,113,113,0.45)",
-                                minWidth: 60,
-                              }}>
-                                +{delayedOverflow} more
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Empty state */}
-                      {!hasAnything && (
-                        <div style={{
-                          padding: "14px 0",
-                          fontSize: 12,
-                          color: "var(--text-faint)",
-                          fontStyle: "italic",
-                        }}>
-                          No jobs queued
-                        </div>
-                      )}
+                  {/* Bar */}
+                  <div style={{ marginBottom: hasAny ? 12 : 0 }}>
+                    <div className="queue-bar">
+                      {proc.length > 0 && <div className="queue-bar-seg" style={{ width: `${(proc.length / Math.max(tot, 1)) * 100}%`, background: "var(--accent)" }} />}
+                      {depth > 0 && <div className="queue-bar-seg" style={{ width: `${(depth / Math.max(tot, 1)) * 100}%`, background: "var(--text-muted)" }} />}
+                      {delayed > 0 && <div className="queue-bar-seg" style={{ width: `${(delayed / Math.max(tot, 1)) * 100}%`, background: "var(--red)", opacity: 0.7 }} />}
                     </div>
-                  )}
+                  </div>
 
-                  {!hasAnything && (
-                    <div style={{ fontSize: 12, color: "var(--text-faint)", fontStyle: "italic" }}>No jobs queued</div>
+                  {/* Job chips (nested accordion) */}
+                  {hasAny ? (
+                    <Acc title="Jobs in queue" badge={<span className="acc-badge">{tot}</span>}>
+                      {proc.length > 0 && (
+                        <div style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Processing</div>
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            {proc.map(j => (
+                              <Tip key={j.id} text={`Worker: ${j.workerId ?? "—"}`}>
+                                <div style={{ padding: "5px 9px", borderRadius: "var(--radius-xs)", background: "var(--processing-bg)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "monospace", fontWeight: 600, color: "var(--accent)" }}>#{j.id}</div>
+                              </Tip>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {ready.length > 0 && (
+                        <div style={{ marginBottom: 10 }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Ready</div>
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            {ready.map((r, i) => (
+                              <div key={`${r.id}-${i}`} style={{ padding: "5px 9px", borderRadius: "var(--radius-xs)", background: "var(--bg-inset)", border: "1px solid var(--border)", fontSize: 11, fontFamily: "monospace", color: "var(--text-muted)" }}>
+                                <span style={{ fontWeight: 600 }}>#{r.id}</span> <span style={{ fontSize: 9, color: "var(--text-faint)" }}>wait {wt(r.runAt)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                      {delItems.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Delayed</div>
+                          <div style={{ display: "flex", gap: 5, flexWrap: "wrap" }}>
+                            {delItems.map((d, i) => (
+                              <div key={`${d.id}-${i}`} style={{ padding: "5px 9px", borderRadius: "var(--radius-xs)", background: "var(--red-soft)", border: "1px solid var(--red)", fontSize: 11, fontFamily: "monospace", color: "var(--red)", opacity: 0.85 }}>
+                                #{d.id} <span style={{ fontSize: 9 }}>{dl(d.runAt)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </Acc>
+                  ) : (
+                    <div style={{ textAlign: "center", fontSize: 11, color: "var(--text-faint)", fontStyle: "italic", padding: "6px 0" }}>Idle — no jobs</div>
                   )}
                 </div>
               );
             })}
           </div>
-        </div>
+        </Acc>
       </div>
 
-      {/* Seed Jobs */}
-      <div style={{ marginBottom: 16, maxWidth: 480 }}>
-        <div className="card">
-          <div className="section-header">
-            <span className="section-title">Seed Jobs</span>
+      {/* ─── ROW 7: Seed Jobs (accordion) ─── */}
+      <div style={{ marginBottom: 16 }}>
+        <Acc title="Seed Jobs" icon="⚡" desc="Inject test jobs into the pipeline">
+          <div style={{ maxWidth: 400, display: "flex", flexDirection: "column", gap: 12 }}>
+            <div>
+              <label className="label">Count: <strong style={{ color: "var(--text-primary)" }}>{seedForm.count}</strong></label>
+              <input type="range" min={1} max={100} value={seedForm.count} onChange={e => setSeedForm(f => ({ ...f, count: +e.target.value }))} style={{ width: "100%" }} />
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-faint)" }}><span>1</span><span>100</span></div>
+            </div>
+            <div><label className="label">Queue</label><select className="select" value={seedForm.queue_name} onChange={e => setSeedForm(f => ({ ...f, queue_name: e.target.value }))}><option value="">Random</option>{QUEUES.map(q => <option key={q} value={q}>{q}</option>)}</select></div>
+            <div><label className="label">Failure Mode</label><select className="select" value={seedForm.failure_mode} onChange={e => setSeedForm(f => ({ ...f, failure_mode: e.target.value }))}><option value="">Random</option><option value="succeed">Always succeed</option><option value="fail">Always fail</option><option value="probably_fail">Probabilistic</option></select></div>
+            <button className="btn btn-primary" onClick={handleSeed} disabled={seeding}>{seeding ? "Seeding..." : `⚡ Seed ${seedForm.count} Jobs`}</button>
+            {seedMsg && <p style={{ fontSize: 12, color: seedMsg.startsWith("✓") ? "var(--green)" : "var(--red)" }}>{seedMsg}</p>}
           </div>
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <div>
-              <label className="label">
-                Job count: <strong style={{ color: "var(--text-primary)" }}>{seedForm.count}</strong>
-              </label>
-              <input
-                type="range"
-                min={1}
-                max={100}
-                value={seedForm.count}
-                onChange={(e) => setSeedForm((f) => ({ ...f, count: Number(e.target.value) }))}
-                style={{ width: "100%", marginTop: 4 }}
-              />
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, color: "var(--text-muted)" }}>
-                <span>1</span><span>100</span>
-              </div>
-            </div>
-            <div>
-              <label className="label">Queue (optional)</label>
-              <select
-                className="select"
-                value={seedForm.queue_name}
-                onChange={(e) => setSeedForm((f) => ({ ...f, queue_name: e.target.value }))}
-              >
-                <option value="">Random</option>
-                {QUEUES.map((q) => <option key={q} value={q}>{q}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="label">Failure mode (optional)</label>
-              <select
-                className="select"
-                value={seedForm.failure_mode}
-                onChange={(e) => setSeedForm((f) => ({ ...f, failure_mode: e.target.value }))}
-              >
-                <option value="">Random</option>
-                <option value="succeed">Always succeed</option>
-                <option value="fail">Always fail</option>
-                <option value="probably_fail">Probabilistic</option>
-              </select>
-            </div>
-            <button className="btn btn-primary" onClick={handleSeed} disabled={seeding}>
-              {seeding ? "Seeding..." : `⚡ Seed ${seedForm.count} Jobs`}
-            </button>
-            {seedMsg && (
-              <p
-                style={{
-                  fontSize: 12,
-                  color: seedMsg.startsWith("✓") ? "var(--completed)" : "var(--failed)",
-                  marginTop: 2,
-                }}
-              >
-                {seedMsg}
-              </p>
-            )}
-          </div>
-        </div>
+        </Acc>
       </div>
 
-      {/* Live Activity Feed */}
-      <div className="card">
-        <div className="section-header">
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <span className="section-title">Live Activity Feed</span>
-            <div className="pulse-dot pulse-green" style={{ width: 7, height: 7 }} />
-          </div>
-          <span style={{ fontSize: 11, color: "var(--text-muted)" }}>WebSocket · real-time updates</span>
-        </div>
-        <div
-          ref={feedRef}
-          style={{
-            height: 280,
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column",
-            gap: 3,
-          }}
-        >
+      {/* ─── ROW 8: Live Feed (accordion, default open) ─── */}
+      <Acc title="Live Activity Feed" icon={<div className="pulse-dot pulse-green" style={{ width: 8, height: 8 }} />} desc="Real-time job state transitions via WebSocket" badge={feed.length > 0 ? <span className="acc-badge">{feed.length}</span> : undefined} open={true}>
+        <div ref={feedRef} style={{ maxHeight: 280, overflowY: "auto" }}>
           {feed.length === 0 ? (
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                height: "100%",
-                color: "var(--text-muted)",
-                fontSize: 13,
-              }}
-            >
-              Waiting for job events…
-            </div>
-          ) : (
-            feed.map((ev, i) => {
-              const cfg = STATUS_CONFIG[ev.status] || STATUS_CONFIG.pending;
-              const prevCfg = STATUS_CONFIG[ev.prev_status] || STATUS_CONFIG.pending;
-              const ts = new Date(ev.timestamp).toLocaleTimeString("en-US", {
-                hour: "2-digit", minute: "2-digit", second: "2-digit"
-              });
-              return (
-                <div
-                  key={i}
-                  className="feed-item"
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 10,
-                    padding: "6px 10px",
-                    borderRadius: 7,
-                    background: i === 0 ? "rgba(255,255,255,0.04)" : "transparent",
-                    fontSize: 12,
-                  }}
-                >
-                  <span style={{ color: "var(--text-muted)", fontFamily: "monospace", flexShrink: 0, fontSize: 11 }}>
-                    {ts}
-                  </span>
-                  <span style={{ fontFamily: "monospace", color: "var(--text-muted)", fontSize: 11 }}>
-                    #{String(ev.job_id).slice(0, 8)}
-                  </span>
-                  <span style={{ color: "var(--text-secondary)" }}>{ev.job_type}</span>
-                  <span style={{ color: "var(--text-muted)", fontSize: 11 }}>({ev.queue_name})</span>
-                  <span style={{ color: "var(--text-muted)" }}>→</span>
-                  <span className={`badge ${prevCfg.badgeClass}`} style={{ padding: "1px 7px" }}>
-                    {ev.prev_status}
-                  </span>
-                  <span style={{ color: "var(--text-muted)", fontSize: 14 }}>→</span>
-                  <span className={`badge ${cfg.badgeClass}`} style={{ padding: "1px 7px" }}>
-                    {ev.status}
-                  </span>
-                  {ev.status === "processing" && <div className="spinner" />}
-                  {ev.error && (
-                    <span
-                      style={{
-                        flex: 1,
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                        color: "var(--failed)",
-                        fontSize: 11,
-                      }}
-                      title={ev.error}
-                    >
-                      ✗ {ev.error.slice(0, 60)}
-                    </span>
-                  )}
-                </div>
-              );
-            })
-          )}
+            <div style={{ textAlign: "center", padding: "40px 0", color: "var(--text-faint)", fontSize: 12 }}>Waiting for job events…</div>
+          ) : feed.map((ev, i) => {
+            const c = STATUS_CFG[ev.status] || STATUS_CFG.pending;
+            const pc = STATUS_CFG[ev.prev_status] || STATUS_CFG.pending;
+            const ts = new Date(ev.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+            return (
+              <div key={i} className="feed-item" style={{ display: "flex", alignItems: "center", gap: 8, padding: "6px 8px", borderRadius: "var(--radius-xs)", background: i === 0 ? "var(--bg-inset)" : "transparent", fontSize: 12 }}>
+                <span style={{ color: "var(--text-faint)", fontFamily: "monospace", fontSize: 10, flexShrink: 0 }}>{ts}</span>
+                <span style={{ fontFamily: "monospace", color: "var(--text-muted)", fontSize: 10 }}>#{String(ev.job_id).slice(0, 8)}</span>
+                <span style={{ color: "var(--text-secondary)", fontWeight: 500 }}>{ev.job_type}</span>
+                <span style={{ color: "var(--text-faint)", fontSize: 10 }}>({ev.queue_name})</span>
+                <span className={`badge ${pc.badge}`} style={{ padding: "1px 6px" }}>{ev.prev_status}</span>
+                <span style={{ color: "var(--text-faint)" }}>→</span>
+                <span className={`badge ${c.badge}`} style={{ padding: "1px 6px" }}>{ev.status}</span>
+                {ev.status === "processing" && <div className="spinner" />}
+                {ev.error && <span title={ev.error} style={{ color: "var(--red)", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160 }}>✗ {ev.error.slice(0, 40)}</span>}
+              </div>
+            );
+          })}
         </div>
-      </div>
+      </Acc>
     </div>
   );
 }
