@@ -3,8 +3,10 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 
+ENV PNPM_STORE_DIR=/home/node/.pnpm-store
+
 # Install pnpm
-RUN npm install -g pnpm
+RUN npm install -g pnpm@10.33.0
 
 # Copy package files
 COPY package.json pnpm-lock.yaml* ./
@@ -23,11 +25,12 @@ FROM node:22-alpine
 
 # Set to production
 ENV NODE_ENV=production
+ENV PNPM_STORE_DIR=/home/node/.pnpm-store
 
 WORKDIR /app
 
 # Install pnpm for production dependency management
-RUN npm install -g pnpm
+RUN npm install -g pnpm@10.33.0
 
 # Copy package files
 COPY package.json pnpm-lock.yaml* ./

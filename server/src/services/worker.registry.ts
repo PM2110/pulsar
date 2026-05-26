@@ -1,5 +1,6 @@
 import { redisClient } from '../config/redis.config.js'
 import { WorkerInfo } from '../types/worker.types.js'
+import { logger } from '../utils/logger.js'
 
 const REGISTRY_KEY = 'pulsar:workers'
 const WORKER_TTL = 30 // Seconds before a worker is considered stale
@@ -36,7 +37,7 @@ export const workerRegistry = {
         )
       }
     } catch (err) {
-      console.error('Error fetching/setting db worker settings in register:', err)
+      logger.error('Error fetching/setting db worker settings in register', err, 'REGISTRY')
     }
 
     const info = {
@@ -116,7 +117,7 @@ export const workerRegistry = {
             [workerId, autoRestart]
           )
         } catch (err) {
-          console.error('Error updating auto_restart in db in setStopped:', err)
+          logger.error('Error updating auto_restart in db in setStopped', err, 'REGISTRY')
         }
       }
       w.last_activity = new Date()
@@ -143,7 +144,7 @@ export const workerRegistry = {
         [workerId]
       )
     } catch (err) {
-      console.error('Error setting auto_restart in db in setRestartAt:', err)
+      logger.error('Error setting auto_restart in db in setRestartAt', err, 'REGISTRY')
     }
   },
 
@@ -176,7 +177,7 @@ export const workerRegistry = {
         [workerId, autoRestart]
       )
     } catch (err) {
-      console.error('Error updating auto_restart in DB:', err)
+      logger.error('Error updating auto_restart in DB', err, 'REGISTRY')
     }
   },
 
@@ -197,7 +198,7 @@ export const workerRegistry = {
         [workerId, enabled]
       )
     } catch (err) {
-      console.error('Error updating adaptive_scaling in DB:', err)
+      logger.error('Error updating adaptive_scaling in DB', err, 'REGISTRY')
     }
   },
 
@@ -273,7 +274,7 @@ export const workerRegistry = {
         const shouldRestart = (restartTime && now >= restartTime) || (w.auto_restart && !w.restart_at)
 
         if (shouldRestart) {
-          console.log(`⏰ Restarting worker ${id} (${restartTime ? 'Scheduled' : 'Auto-Heal'})`)
+          logger.info(`Restarting worker ${id} (${restartTime ? 'Scheduled' : 'Auto-Heal'})`, 'REGISTRY')
           // Clear restart_at to avoid loops, set back to idle/processing if starting
           w.restart_at = undefined
           w.status = 'idle'
@@ -311,7 +312,7 @@ export const workerRegistry = {
           continue
         }
 
-        console.log(`🕵️ Recovery: Worker ${id} is stale. Cleaning up...`)
+        logger.warn(`Recovery: Worker ${id} is stale. Cleaning up...`, 'REGISTRY')
         await workerRegistry.recoverWorker(id, queueService, w)
         recoveredCount += (w.active_job_ids?.length || 0)
       }
@@ -328,7 +329,7 @@ export const workerRegistry = {
 
     // 1. Recover any jobs the worker was processing
     if (w.active_job_ids && w.active_job_ids.length > 0) {
-      console.log(`♻️ Recovery: Re-enqueuing ${w.active_job_ids.length} jobs from crashed worker ${workerId}`)
+      logger.info(`Recovery: Re-enqueuing ${w.active_job_ids.length} jobs from crashed worker ${workerId}`, 'REGISTRY')
 
       for (const jobId of w.active_job_ids) {
         try {
@@ -368,7 +369,7 @@ export const workerRegistry = {
             }
           }
         } catch (err) {
-          console.error(`❌ Recovery: Failed to recover job ${jobId}:`, err)
+          logger.error(`Recovery: Failed to recover job ${jobId}`, err, 'REGISTRY')
         }
       }
     }

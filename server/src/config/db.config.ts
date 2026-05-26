@@ -1,5 +1,6 @@
 import pg from 'pg'
 import { env } from './env.config.js'
+import { logger } from '../utils/logger.js'
 
 const { Pool } = pg
 
@@ -12,7 +13,7 @@ export const pool = new Pool({
 })
 
 pool.on('error', (err) => {
-  console.error('Unexpected error on idle client', err)
+  logger.error('Unexpected error on idle client', err, 'DATABASE')
   process.exit(-1)
 })
 

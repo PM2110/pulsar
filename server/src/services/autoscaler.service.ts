@@ -1,6 +1,7 @@
 import { redisClient } from '../config/redis.config.js'
 import { workerRegistry } from './worker.registry.js'
 import { workerService } from './worker.service.js'
+import { logger } from '../utils/logger.js'
 import { randomBytes } from 'crypto'
 
 export interface AutoscalerConfig {
@@ -41,7 +42,7 @@ class AutoscalerService {
     if (this.isRunning) return
     this.isRunning = true
     this.intervalId = setInterval(() => this.tick(), intervalMs)
-    console.log(`📈 Autoscaler started (interval: ${intervalMs}ms)`)
+    logger.info(`Autoscaler started (interval: ${intervalMs}ms)`, 'AUTOSCALER')
   }
 
   stop() {
@@ -50,7 +51,7 @@ class AutoscalerService {
       clearInterval(this.intervalId)
       this.intervalId = null
     }
-    console.log(`🛑 Autoscaler stopped`)
+    logger.info(`Autoscaler stopped`, 'AUTOSCALER')
   }
 
   private async tick() {
@@ -85,7 +86,7 @@ class AutoscalerService {
         if (scalingWorkers.length > 0) {
           const concurrencyPerWorker = Math.ceil(remainingTarget / scalingWorkers.length)
 
-          console.log(`📈 Autoscaler [${queueName}]: Depth=${queueDepth}, ActiveWorkers=${activeCount} (Scaling=${scalingWorkers.length}, Fixed=${fixedWorkers.length}), TargetTotal=${targetTotalConcurrency}, Remaining=${remainingTarget}, PerWorker=${concurrencyPerWorker}`)
+          logger.info(`Autoscaler [${queueName}]: Depth=${queueDepth}, ActiveWorkers=${activeCount} (Scaling=${scalingWorkers.length}, Fixed=${fixedWorkers.length}), TargetTotal=${targetTotalConcurrency}, Remaining=${remainingTarget}, PerWorker=${concurrencyPerWorker}`, 'AUTOSCALER')
 
           // Broadcast the new concurrency target for this queue
           redisClient.publish('pulsar:concurrency_update', JSON.stringify({
@@ -93,10 +94,10 @@ class AutoscalerService {
             concurrency: concurrencyPerWorker
           }))
         } else {
-          console.log(`📈 Autoscaler [${queueName}]: Depth=${queueDepth}, ActiveWorkers=${activeCount} (All Fixed), TargetTotal=${targetTotalConcurrency}`)
+          logger.info(`Autoscaler [${queueName}]: Depth=${queueDepth}, ActiveWorkers=${activeCount} (All Fixed), TargetTotal=${targetTotalConcurrency}`, 'AUTOSCALER')
         }
       } catch (err) {
-        console.error(`❌ Autoscaler error on queue '${queueName}':`, err)
+        logger.error(`Autoscaler error on queue '${queueName}'`, err, 'AUTOSCALER')
       }
     }
   }

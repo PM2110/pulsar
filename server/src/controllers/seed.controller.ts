@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
 import { getClient } from '../config/db.config.js'
 import { outboxService } from '../services/outbox.service.js'
+import { logger } from '../utils/logger.js'
 
 const JOB_TYPES: Record<string, string[]> = {
   notifications: ['email_send', 'sms_send', 'push_notify'],
@@ -101,7 +102,7 @@ export const seedController = {
       // Once committed, the jobs are visible in the DB, and the outbox entry 
       // is ready to be picked up by the Outbox Relay.
       await client.query('COMMIT')
-      console.log(`✅ Transaction committed. Created ${createdJobs.length} jobs and outbox entries.`)
+      logger.info(`Transaction committed. Created ${createdJobs.length} jobs and outbox entries.`, 'SYSTEM')
 
       res.status(201).json({
         message: `Successfully seeded ${createdJobs.length} jobs via Outbox`,

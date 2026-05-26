@@ -1,6 +1,7 @@
 import { query, pool } from '../config/db.config.js'
 import { redisClient } from '../config/redis.config.js'
 import { queueService } from './queue.service.js'
+import { logger } from '../utils/logger.js'
 
 /**
  * Service to handle the Transactional Outbox Pattern.
@@ -72,7 +73,7 @@ export const outboxService = {
             [entry.id]
           )
         } catch (err: any) {
-          console.error(`❌ Outbox Relay: Failed to process entry ${entry.id}:`, err.message)
+          logger.error(`Outbox Relay: Failed to process entry ${entry.id}`, err, 'OUTBOX')
 
           // Increment retry count and log error
           await client.query(
@@ -93,7 +94,7 @@ export const outboxService = {
       redisClient.publish('pulsar:events', JSON.stringify({ type: 'outbox_update' }))
     } catch (err) {
       if (client) await client.query('ROLLBACK')
-      console.error('❌ Outbox Relay Error:', err)
+      logger.error('Outbox Relay Error', err, 'OUTBOX')
     } finally {
       client.release()
     }

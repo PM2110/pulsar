@@ -4,6 +4,7 @@ import { query } from '../config/db.config.js'
 import { DEFAULT_QUEUE } from '../config/queue.config.js'
 import { queueService } from './queue.service.js'
 import { workerRegistry } from './worker.registry.js'
+import { logger } from '../utils/logger.js'
 
 /**
  * Service to handle worker logic: polling Redis and processing jobs.
@@ -31,7 +32,7 @@ export const workerService = {
     activeTasks.set(workerId, new Set())
 
     await workerRegistry.register(workerId, queueName)
-    console.log(`🚀 Worker started polling queue: ${queueName} with concurrency: 1`)
+    logger.info(`Worker started polling queue: ${queueName} with concurrency: 1`, 'WORKER')
 
     // Heartbeat to keep registration alive in Redis
     this.singletonHeartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
@@ -50,7 +51,7 @@ export const workerService = {
           await new Promise(resolve => setTimeout(resolve, 100))
         }
       } catch (error) {
-        console.error('❌ Worker loop error:', error)
+        logger.error('Worker loop error', error, 'WORKER')
         await new Promise(resolve => setTimeout(resolve, 5000))
       }
     }
@@ -66,7 +67,7 @@ export const workerService = {
    */
   async startInstance(queueName: string, workerId: string) {
     if (runningInstances.get(workerId)) {
-      console.warn(`⚠️ Worker instance '${workerId}' is already running. Ignoring duplicate start.`)
+      logger.warn(`Worker instance '${workerId}' is already running. Ignoring duplicate start.`, 'WORKER')
       return
     }
     runningInstances.set(workerId, true)
@@ -76,7 +77,7 @@ export const workerService = {
     activeTasks.set(workerId, new Set())
 
     await workerRegistry.register(workerId, queueName)
-    console.log(`🚀 Worker instance '${workerId}' started on queue: ${queueName} with concurrency: 1`)
+    logger.info(`Worker instance '${workerId}' started on queue: ${queueName} with concurrency: 1`, 'WORKER')
 
     const heartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
     heartbeats.set(workerId, heartbeat)
@@ -94,7 +95,7 @@ export const workerService = {
           await new Promise(resolve => setTimeout(resolve, 100))
         }
       } catch (error) {
-        console.error(`❌ Worker instance '${workerId}' error:`, error)
+        logger.error(`Worker instance '${workerId}' error`, error, 'WORKER')
         await new Promise(resolve => setTimeout(resolve, 5000))
       }
     }
@@ -103,9 +104,9 @@ export const workerService = {
     // Skip registry cleanup if this was an intentional "crash"
     if (!crashedInstances.has(workerId)) {
       await workerRegistry.setStopped(workerId)
-      console.log(`🛑 Worker instance '${workerId}' stopped gracefully.`)
+      logger.info(`Worker instance '${workerId}' stopped gracefully.`, 'WORKER')
     } else {
-      console.log(`☠ Worker instance '${workerId}' exited silently (Simulation).`)
+      logger.info(`Worker instance '${workerId}' exited silently (Simulation).`, 'WORKER')
     }
     
     workerQueues.delete(workerId)
@@ -115,7 +116,7 @@ export const workerService = {
    * Dynamically updates the concurrency for a specific worker instance.
    */
   async updateConcurrency(workerId: string, concurrency: number) {
-    console.log(`📈 Updating concurrency for worker '${workerId}' to ${concurrency}`)
+    logger.info(`Updating concurrency for worker '${workerId}' to ${concurrency}`, 'WORKER')
     instanceConcurrency.set(workerId, concurrency)
     await workerRegistry.updateConcurrency(workerId, concurrency)
   },
@@ -145,7 +146,7 @@ export const workerService = {
       clearInterval(hb)
       heartbeats.delete(workerId)
     }
-    console.log(`🛑 Worker instance '${workerId}' stopping...`)
+    logger.info(`Worker instance '${workerId}' stopping...`, 'WORKER')
   },
 
   /**
@@ -160,7 +161,7 @@ export const workerService = {
       clearInterval(hb)
       heartbeats.delete(workerId)
     }
-    console.log(`☠ Worker instance '${workerId}' crashing...`)
+    logger.warn(`Worker instance '${workerId}' crashing...`, 'WORKER')
   },
 
   /**
@@ -172,7 +173,7 @@ export const workerService = {
       clearInterval(this.singletonHeartbeat)
       this.singletonHeartbeat = null
     }
-    console.log('🛑 Worker stopping...')
+    logger.info('Worker stopping...', 'WORKER')
   },
 
   /**
@@ -205,7 +206,7 @@ export const workerService = {
     }
 
     const jobId = result.value
-    console.log(`📦 Picked up job ${jobId} from ${queueName}`)
+    logger.info(`Picked up job ${jobId} from ${queueName}`, 'WORKER')
 
     // Track in registry
     await workerRegistry.setProcessing(workerId, jobId)
@@ -240,19 +241,19 @@ export const workerService = {
           const runAtDate = new Date(run_at)
 
           if (status === 'pending' && runAtDate > new Date()) {
-            console.warn(`⏳ Job ${jobId} picked up early (Scheduled for ${run_at}). Re-scheduling in delayed queue.`)
+            logger.warn(`Job ${jobId} picked up early (Scheduled for ${run_at}). Re-scheduling in delayed queue.`, 'WORKER')
             await queueService.enqueueDelayedJob(queueName, jobId, priority, runAtDate.getTime())
           } else {
-            console.warn(`⚠️ Job ${jobId} skipped: Status is '${status}' or already being processed.`)
+            logger.warn(`Job ${jobId} skipped: Status is '${status}' or already being processed.`, 'WORKER')
           }
         } else {
-          console.warn(`⚠️ Job ${jobId} found in Redis but not in DB. Skipping.`)
+          logger.warn(`Job ${jobId} found in Redis but not in DB. Skipping.`, 'WORKER')
         }
         return
       }
 
       job = startResult.rows[0]
-      console.log(`⚙️ Processing job ${jobId} (Type: ${job.job_type}, Attempt: ${job.attempts}/${job.max_attempts})`)
+      logger.info(`Processing job ${jobId} (Type: ${job.job_type}, Attempt: ${job.attempts}/${job.max_attempts})`, 'JOB')
 
       // Broadcast start using Redis PubSub
       redisClient.publish('pulsar:events', JSON.stringify({ type: 'job_update', job_id: jobId, status: 'processing' }))
@@ -299,7 +300,7 @@ export const workerService = {
 
       // Final safety check: don't update registry if we've been crashed during simulation
       if (!this.isRunning && !runningInstances.get(workerId)) {
-        console.log(`⚠️ Worker ${workerId} was crashed during processing. Aborting registry update.`)
+        logger.warn(`Worker ${workerId} was crashed during processing. Aborting registry update.`, 'WORKER')
         return
       }
 
@@ -324,12 +325,12 @@ export const workerService = {
       
       await workerRegistry.incrementProcessed(workerId)
       await workerRegistry.setIdle(workerId, jobId)
-      console.log(`✅ Job ${jobId} completed successfully (Execution: ${executionTimeMs}ms, Latency: ${queueLatencyMs}ms)`)
+      logger.info(`Job ${jobId} completed successfully - SUCCESS - ${executionTimeMs}ms (Latency: ${queueLatencyMs}ms)`, 'JOB')
 
       // Broadcast completion
       redisClient.publish('pulsar:events', JSON.stringify({ type: 'job_update', job_id: jobId, status: 'completed' }))
     } catch (error: any) {
-      console.error(`❌ Failed to process job ${jobId}:`, error.message)
+      logger.error(`Failed to process job ${jobId}`, error, 'JOB')
       const finishedAt = new Date()
       const executionTimeMs = finishedAt.getTime() - startedAt.getTime()
       const errorMessage = error.message || 'Unknown error'
@@ -342,7 +343,7 @@ export const workerService = {
         if (canRetry) {
           const delay = this.calculateBackoff(job.attempts)
           nextRunAt = new Date(Date.now() + delay)
-          console.log(`🔄 Job ${jobId} failed. Retrying in ${delay / 1000}s (at ${nextRunAt.toISOString()})`)
+          logger.info(`Job ${jobId} failed - RETRYING in ${delay / 1000}s (at ${nextRunAt.toISOString()})`, 'JOB')
 
           // Add to Redis delayed queue
           await queueService.enqueueDelayedJob(queueName, jobId, job.priority, nextRunAt.getTime())
@@ -376,7 +377,7 @@ export const workerService = {
 
         if (!canRetry) {
           workerRegistry.incrementFailed(workerId)
-          console.log(`💀 Job ${jobId} failed after ${job.attempts} attempts.`)
+          logger.error(`Job ${jobId} failed permanently after ${job.attempts} attempts`, null, 'JOB')
         }
 
         // Broadcast failure or retry
