@@ -2,122 +2,109 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { apiService, socket } from "../lib/api.service";
-import { Acc, Tip } from "../components/Accordion";
-import { useTheme } from "../components/ThemeProvider";
+import { Tooltip, Accordion, SearchInput, AnimNum } from "../components/ui";
 
 interface WorkerInfo {
   worker_id: string; queue_name: string; status: "idle" | "processing" | "stopped";
   concurrency: number; active_job_ids: string[]; jobs_processed: number; jobs_failed: number;
   auto_restart: boolean; restart_at?: string; last_activity: string; started_at: string;
 }
-
 const QUEUES = ["notifications", "media", "default"];
-const ST: Record<string, { badge: string; pulse: string }> = {
-  idle: { badge: "badge-completed", pulse: "pulse-green" },
-  processing: { badge: "badge-processing", pulse: "pulse-white" },
-  stopped: { badge: "badge-pending", pulse: "pulse-gray" },
+const ST: Record<string, { badge: string; dot: string }> = {
+  idle: { badge: "badge-completed", dot: "pulse-green" },
+  processing: { badge: "badge-processing", dot: "pulse-blue" },
+  stopped: { badge: "badge-pending", dot: "pulse-gray" },
 };
+function ago(iso: string, now: number) { const d = now - new Date(iso).getTime(); if (d < 5000) return "just now"; return d < 60000 ? `${Math.floor(d / 1000)}s ago` : `${Math.floor(d / 60000)}m ago`; }
 
-function ago(iso: string, now: number) {
-  const d = now - new Date(iso).getTime();
-  if (d < 5000) return "just now";
-  return d < 60000 ? `${Math.floor(d / 1000)}s ago` : `${Math.floor(d / 60000)}m ago`;
-}
-
-function WCard({ w, onStop, onCrash, onRefresh, now }: {
-  w: WorkerInfo; onStop: (id: string, o?: any) => void; onCrash: (id: string) => void; onRefresh: () => void; now: number;
+function WorkerCard({ w, now, onRefresh, onCrash, onStop }: {
+  w: WorkerInfo; now: number; onRefresh: () => void; onCrash: (id: string) => void; onStop: (id: string, o?: any) => void;
 }) {
-  const [showMenu, setShowMenu] = useState(false);
+  const [menu, setMenu] = useState(false);
   const [crashing, setCrashing] = useState(false);
   const stale = w.status !== "stopped" && (now - new Date(w.last_activity).getTime() > 30000);
   const cfg = ST[w.status] || ST.stopped;
   const rate = w.jobs_processed + w.jobs_failed > 0 ? Math.round((w.jobs_processed / (w.jobs_processed + w.jobs_failed)) * 100) : 100;
+  const indicatorColor = stale ? "var(--red)" : w.status === "processing" ? "var(--accent)" : w.status === "idle" ? "var(--green)" : "var(--text-faint)";
 
   return (
-    <div className="worker-pod" style={{ position: "relative", borderLeftColor: stale ? "var(--red)" : w.status === "processing" ? "var(--accent)" : "var(--border)", borderLeftWidth: 3 }}>
-      {stale && <div style={{ position: "absolute", top: 0, left: -1, right: 0, background: "var(--red-soft)", color: "var(--red)", fontSize: 9, textAlign: "center", padding: "4px 0", fontWeight: 700, borderRadius: "0 10px 0 0", letterSpacing: "0.06em" }}>DISCONNECTED</div>}
+    <div className="worker-card">
+      <div className="worker-card-indicator" style={{ background: indicatorColor }} />
+
+      {stale && <div style={{ background: "var(--red-soft)", color: "var(--red)", fontSize: 10, textAlign: "center", padding: "5px 0", fontWeight: 700, borderRadius: "0 8px 0 0", position: "absolute", top: 0, left: 4, right: 0, letterSpacing: ".06em" }}>DISCONNECTED</div>}
 
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 18, marginTop: stale ? 14 : 0 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20, marginTop: stale ? 18 : 0, paddingLeft: 10 }}>
         <div>
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-            <div className={`pulse-dot ${cfg.pulse}`} />
-            <span style={{ fontSize: 14, fontWeight: 700, color: "var(--text-primary)" }}>{w.worker_id}</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+            <div className={`pulse-dot ${cfg.dot}`} />
+            <span style={{ fontSize: 16, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-.02em" }}>{w.worker_id}</span>
           </div>
-          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+          <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span className="chip" style={{ fontFamily: "monospace" }}>queue:{w.queue_name}</span>
-            {w.auto_restart && <Tip text="Auto-restarts on crash"><span style={{ fontSize: 9, color: "var(--green)", fontWeight: 700 }}>🛡 HEAL</span></Tip>}
+            {w.auto_restart && <Tooltip text="Automatically restarts on crash"><span style={{ fontSize: 10, color: "var(--green)", fontWeight: 700 }}>🛡 AUTO-HEAL</span></Tooltip>}
           </div>
         </div>
-        <span className={`badge ${stale ? "badge-failed" : cfg.badge}`}>{stale ? "OFFLINE" : w.status}</span>
+        <span className={`badge ${stale ? "badge-failed" : cfg.badge}`} style={{ fontSize: "10.5px" }}>{stale ? "OFFLINE" : w.status.toUpperCase()}</span>
       </div>
 
-      {/* Stats */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
+      {/* Stats grid */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 10, marginBottom: 18, paddingLeft: 10 }}>
         {[
-          { l: "Processed", v: String(w.jobs_processed), c: "var(--green)", tip: "Total completed" },
-          { l: "Failed", v: String(w.jobs_failed), c: "var(--red)", tip: "Total failed" },
-          { l: "Slots", v: `${w.active_job_ids.length}/${w.concurrency}`, c: "var(--accent)", tip: "Active / capacity" },
-          { l: "Success", v: `${rate}%`, c: rate >= 80 ? "var(--green)" : "var(--red)", tip: "Success rate" },
+          { l: "Processed", v: String(w.jobs_processed), c: "var(--green)", tip: "Total successfully processed" },
+          { l: "Failed", v: String(w.jobs_failed), c: "var(--red)", tip: "Total failed attempts" },
+          { l: "Slots", v: `${w.active_job_ids.length}/${w.concurrency}`, c: "var(--accent)", tip: "Active / total concurrency slots" },
+          { l: "Success", v: `${rate}%`, c: rate >= 80 ? "var(--green)" : "var(--red)", tip: "Overall success rate" },
         ].map(s => (
-          <Tip key={s.l} text={s.tip}>
-            <div className="queue-mini-stat" style={{ width: "100%" }}>
-              <div className="queue-mini-stat-label">{s.l}</div>
-              <div className="queue-mini-stat-value" style={{ color: s.c, fontSize: 16 }}>{s.v}</div>
+          <Tooltip key={s.l} text={s.tip}>
+            <div className="queue-mini" style={{ width: "100%" }}>
+              <div className="queue-mini-label">{s.l}</div>
+              <div className="queue-mini-val" style={{ color: s.c, fontSize: 18 }}>{s.v}</div>
             </div>
-          </Tip>
+          </Tooltip>
         ))}
       </div>
 
-      {/* Concurrency */}
-      <div style={{ marginBottom: 14 }}>
-        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-faint)", marginBottom: 4 }}>
-          <span>Utilization</span><span>{w.active_job_ids.length}/{w.concurrency}</span>
+      {/* Utilization */}
+      <div style={{ marginBottom: 16, paddingLeft: 10 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-faint)", marginBottom: 5, fontWeight: 600 }}>
+          <span>UTILIZATION</span><span>{w.active_job_ids.length}/{w.concurrency} SLOTS</span>
         </div>
-        <div className="queue-bar">
+        <div className="capacity-bar">
           {Array.from({ length: w.concurrency }).map((_, i) => (
-            <div key={i} className="queue-bar-seg" style={{ flex: 1, background: i < w.active_job_ids.length ? "var(--accent)" : "var(--border)" }} />
+            <div key={i} className="capacity-seg" style={{ flex: 1, background: i < w.active_job_ids.length ? "var(--accent)" : "var(--border)" }} />
           ))}
         </div>
       </div>
 
       {/* Active jobs */}
       {w.active_job_ids.length > 0 && (
-        <div style={{ marginBottom: 14 }}>
-          <div style={{ fontSize: 9, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 6 }}>Active Jobs</div>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+        <div style={{ marginBottom: 16, paddingLeft: 10 }}>
+          <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>Active Jobs</div>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 5 }}>
             {w.active_job_ids.map(id => <span key={id} className="chip" style={{ fontFamily: "monospace", fontSize: 10 }}>{id.substring(0, 8)}</span>)}
           </div>
         </div>
       )}
 
       {/* Footer */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 14, borderTop: "1px solid var(--border)" }}>
-        <Tip text={`Started: ${new Date(w.started_at).toLocaleString()}`}><span style={{ fontSize: 11, color: "var(--text-faint)" }}>Active {ago(w.last_activity, now)}</span></Tip>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 16, borderTop: "1px solid var(--border)", paddingLeft: 10 }}>
+        <Tooltip text={`Started: ${new Date(w.started_at).toLocaleString()}`}><span style={{ fontSize: 11, color: "var(--text-faint)" }}>Active {ago(w.last_activity, now)}</span></Tooltip>
         <div style={{ display: "flex", gap: 6 }}>
           {w.status !== "stopped" && !stale ? (<>
-            <button className="btn btn-danger" style={{ padding: "4px 10px", fontSize: 10 }} disabled={crashing}
-              onClick={async () => { setCrashing(true); try { await onCrash(w.worker_id); onRefresh(); } finally { setCrashing(false); } }}>
-              {crashing ? "..." : "💥 Crash"}
-            </button>
+            <Tooltip text="Simulate crash for testing"><button className="btn btn-danger" style={{ padding: "5px 12px", fontSize: 11 }} disabled={crashing}
+              onClick={async () => { setCrashing(true); try { await onCrash(w.worker_id); onRefresh(); } finally { setCrashing(false); } }}>{crashing ? "..." : "💥 Crash"}</button></Tooltip>
             <div style={{ position: "relative" }}>
-              <button className="btn btn-ghost" style={{ padding: "4px 10px", fontSize: 10 }} onClick={() => setShowMenu(!showMenu)}>■ Stop</button>
-              {showMenu && (
-                <div style={{ position: "absolute", bottom: "100%", right: 0, width: 155, zIndex: 100, marginBottom: 6, background: "var(--bg-card)", border: "1px solid var(--border-strong)", borderRadius: "var(--radius)", padding: 3, boxShadow: "var(--shadow-lg)" }}>
-                  {[
-                    { label: "Manual Stop", fn: () => onStop(w.worker_id) },
-                    { label: "Auto-Restart", fn: () => onStop(w.worker_id, { auto_restart: true }) },
-                    { label: "Restart in 30s", fn: () => onStop(w.worker_id, { restart_in: 30 }) },
-                  ].map(m => (
-                    <button key={m.label} onClick={() => { m.fn(); setShowMenu(false); onRefresh(); }}
-                      style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: "7px 10px", fontSize: 11, color: "var(--text-secondary)", cursor: "pointer", borderRadius: "var(--radius-xs)" }}>{m.label}</button>
-                  ))}
+              <button className="btn btn-ghost" style={{ padding: "5px 12px", fontSize: 11 }} onClick={() => setMenu(!menu)}>■ Stop</button>
+              {menu && (
+                <div style={{ position: "absolute", bottom: "100%", right: 0, width: 170, zIndex: 100, marginBottom: 6, background: "var(--bg-card)", border: "1px solid var(--border-strong)", borderRadius: 8, padding: 4, boxShadow: "var(--shadow-lg)" }}>
+                  {[{ l: "Manual Stop", fn: () => onStop(w.worker_id) }, { l: "Auto-Restart", fn: () => onStop(w.worker_id, { auto_restart: true }) }, { l: "Restart in 30s", fn: () => onStop(w.worker_id, { restart_in: 30 }) }]
+                    .map(m => <button key={m.l} onClick={() => { m.fn(); setMenu(false); onRefresh(); }} style={{ display: "block", width: "100%", textAlign: "left", background: "none", border: "none", padding: "8px 12px", fontSize: 12, color: "var(--text-secondary)", cursor: "pointer", borderRadius: 4, fontFamily: "inherit" }}>{m.l}</button>)}
                 </div>
               )}
             </div>
           </>) : (
-            <button className="btn btn-success" style={{ padding: "4px 12px", fontSize: 10 }}
-              onClick={() => apiService.startWorker({ worker_id: w.worker_id, queue_name: w.queue_name })}>▶ Start</button>
+            <button className="btn btn-success" style={{ padding: "5px 14px", fontSize: 11 }} onClick={() => apiService.startWorker({ worker_id: w.worker_id, queue_name: w.queue_name })}>▶ Start</button>
           )}
         </div>
       </div>
@@ -126,8 +113,8 @@ function WCard({ w, onStop, onCrash, onRefresh, now }: {
 }
 
 export default function WorkersPage() {
-  const { theme, toggleTheme } = useTheme();
   const [workers, setWorkers] = useState<WorkerInfo[]>([]);
+  const [search, setSearch] = useState("");
   const [nw, setNw] = useState({ queue_name: "notifications", worker_id: "api-node-01", auto_restart: true });
   const [starting, setStarting] = useState(false);
   const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
@@ -152,101 +139,99 @@ export default function WorkersPage() {
   const active = workers.filter(w => w.status !== "stopped" && (now - new Date(w.last_activity).getTime() < 30000));
   const inactive = workers.filter(w => w.status === "stopped" || (now - new Date(w.last_activity).getTime() >= 30000));
 
+  const filtered = (list: WorkerInfo[]) => search
+    ? list.filter(w => w.worker_id.toLowerCase().includes(search.toLowerCase()) || w.queue_name.toLowerCase().includes(search.toLowerCase()))
+    : list;
+
   return (
-    <div className="page">
-      {/* ─── Header ─── */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 28 }}>
+    <div className="page-wrap">
+      <div className="page-header">
         <div>
           <h1 className="page-title">Worker Fleet</h1>
-          <p className="page-sub">{active.length} active · {inactive.length} inactive · websocket connected</p>
+          <p className="page-sub">{active.length} active · {inactive.length} inactive · WebSocket connected</p>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
+        <div className="page-actions">
+          <div style={{ width: 240 }}><SearchInput placeholder="Search workers..." value={search} onChange={setSearch} debounceMs={200} /></div>
           <button className="btn btn-ghost" onClick={fetch}>↻ Refresh</button>
-          <button className="theme-toggle" onClick={toggleTheme}>{theme === "dark" ? "☀️" : "🌙"}</button>
         </div>
       </div>
 
-      {/* ─── ROW 1: Fleet Stats ─── */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14, marginBottom: 24 }}>
-        {[
-          { l: "Active Nodes", v: active.length, c: "var(--green)", tip: "Currently running instances" },
-          { l: "Jobs Processed", v: workers.reduce((a, w) => a + w.jobs_processed, 0), c: "var(--text-primary)", tip: "Total across fleet" },
-          { l: "System Failures", v: workers.reduce((a, w) => a + w.jobs_failed, 0), c: "var(--red)", tip: "Total failures across fleet" },
-        ].map(s => (
-          <Tip key={s.l} text={s.tip}>
-            <div className="stat-card" style={{ width: "100%" }}>
-              <div className="stat-card-label">{s.l}</div>
-              <div className="stat-value" style={{ fontSize: 26, color: s.c }}>{s.v}</div>
-            </div>
-          </Tip>
-        ))}
+      {/* Fleet Stats */}
+      <div className="section">
+        <div className="section-label">Fleet Overview</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
+          {[
+            { l: "Active Nodes", v: active.length, c: "var(--green)", tip: "Currently running worker instances" },
+            { l: "Jobs Processed", v: workers.reduce((a, w) => a + w.jobs_processed, 0), c: "var(--text-primary)", tip: "Total processed across all workers" },
+            { l: "System Failures", v: workers.reduce((a, w) => a + w.jobs_failed, 0), c: "var(--red)", tip: "Total failures across fleet" },
+          ].map(s => (
+            <Tooltip key={s.l} text={s.tip}>
+              <div className="hero-stat" style={{ width: "100%" }}>
+                <div className="hero-stat-label">{s.l}</div>
+                <div className="hero-stat-value" style={{ fontSize: 36, color: s.c }}><AnimNum value={s.v} /></div>
+              </div>
+            </Tooltip>
+          ))}
+        </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 24 }}>
         <div>
-          {/* ─── ROW 2: Active Nodes ─── */}
-          <div style={{ marginBottom: 24 }}>
-            <Acc title="Active Nodes" badge={<span className="acc-badge">{active.length}</span>} open={true}>
-              {active.length > 0 ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 14 }}>
-                  {active.map(w => <WCard key={w.worker_id} w={w} now={now} onRefresh={fetch} onCrash={id => apiService.crashWorker(id)} onStop={(id, o) => apiService.stopWorker(id, o)} />)}
+          {/* Active nodes */}
+          <div className="section">
+            <div className="section-label">Active Nodes</div>
+            <Accordion title="Active Workers" badge={<span className="acc-badge">{filtered(active).length}</span>} defaultOpen>
+              {filtered(active).length > 0 ? (
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>
+                  {filtered(active).map(w => <WorkerCard key={w.worker_id} w={w} now={now} onRefresh={fetch} onCrash={id => apiService.crashWorker(id)} onStop={(id, o) => apiService.stopWorker(id, o)} />)}
                 </div>
               ) : (
-                <div style={{ padding: 40, textAlign: "center", border: "1.5px dashed var(--border)", borderRadius: "var(--radius-lg)", color: "var(--text-faint)" }}>No active workers. Deploy from the panel →</div>
+                <div style={{ padding: 50, textAlign: "center", border: "2px dashed var(--border)", borderRadius: "var(--radius)", color: "var(--text-faint)", fontSize: 13 }}>{search ? "No workers match your search" : "No active workers. Deploy from the panel →"}</div>
               )}
-            </Acc>
+            </Accordion>
           </div>
 
-          {/* ─── ROW 3: Inactive Nodes ─── */}
-          {inactive.length > 0 && (
-            <Acc title="Inactive Nodes" badge={<span className="acc-badge">{inactive.length}</span>}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 14 }}>
-                {inactive.map(w => <WCard key={w.worker_id} w={w} now={now} onRefresh={fetch} onCrash={id => apiService.crashWorker(id)} onStop={(id, o) => apiService.stopWorker(id, o)} />)}
-              </div>
-            </Acc>
+          {/* Inactive */}
+          {filtered(inactive).length > 0 && (
+            <div className="section">
+              <div className="section-label">Inactive Nodes</div>
+              <Accordion title="Inactive Workers" badge={<span className="acc-badge">{filtered(inactive).length}</span>}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(380px, 1fr))", gap: 16 }}>
+                  {filtered(inactive).map(w => <WorkerCard key={w.worker_id} w={w} now={now} onRefresh={fetch} onCrash={id => apiService.crashWorker(id)} onStop={(id, o) => apiService.stopWorker(id, o)} />)}
+                </div>
+              </Accordion>
+            </div>
           )}
         </div>
 
-        {/* ─── Sidebar: Controls ─── */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {/* Deploy */}
+        {/* Control Panel */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           <div className="card">
-            <div className="section-header"><span className="section-title">Deploy Instance</span></div>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <div className="card-header"><span className="card-title">Deploy Instance</span></div>
+            <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <div><label className="label">Queue</label><select className="select" value={nw.queue_name} onChange={e => setNw(f => ({ ...f, queue_name: e.target.value }))}>{QUEUES.map(q => <option key={q} value={q}>{q}</option>)}</select></div>
               <div><label className="label">Worker ID</label><input className="input" placeholder="e.g. node-01" value={nw.worker_id} onChange={e => setNw(f => ({ ...f, worker_id: e.target.value }))} /></div>
               <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
                 <input type="checkbox" checked={nw.auto_restart} onChange={e => setNw(f => ({ ...f, auto_restart: e.target.checked }))} />
-                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Auto-healing</span>
+                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Auto-healing enabled</span>
               </label>
               {msg && <p style={{ fontSize: 11, color: msg.ok ? "var(--green)" : "var(--red)" }}>{msg.text}</p>}
-              <button className="btn btn-primary" onClick={handleStart} disabled={starting} style={{ height: 38 }}>{starting ? "Starting..." : "🚀 Deploy Node"}</button>
+              <button className="btn btn-primary" onClick={handleStart} disabled={starting} style={{ height: 42 }}>{starting ? "Starting..." : "🚀 Deploy Node"}</button>
             </div>
           </div>
-
-          {/* Load Injector */}
-          <Acc title="Load Injector" icon="⚡">
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <input type="range" min={1} max={50} value={seedForm.count} onChange={e => setSeedForm(f => ({ ...f, count: +e.target.value }))} style={{ width: "100%" }} />
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-faint)" }}><span>1</span><span>{seedForm.count} jobs</span><span>50</span></div>
-              <button className="btn btn-secondary" onClick={async () => { setSeeding(true); await apiService.seedJobs(seedForm); setSeeding(false); }} disabled={seeding}>{seeding ? "Injecting..." : "⚡ Inject Load"}</button>
-            </div>
-          </Acc>
-
-          {/* Scaling */}
-          <Acc title="Adaptive Scaling" icon="📊">
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              {QUEUES.map(q => {
-                const c = asc[q] || { enabled: false };
-                return (
-                  <div key={q} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "6px 0", opacity: c.enabled ? 1 : 0.45 }}>
-                    <span style={{ fontSize: 12, fontFamily: "monospace", color: "var(--text-secondary)" }}>{q}</span>
-                    <span className={`badge ${c.enabled ? "badge-completed" : "badge-pending"}`} style={{ fontSize: 9 }}>{c.enabled ? "ACTIVE" : "OFF"}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </Acc>
+          <Accordion title="Load Injector" icon="⚡"><div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <input type="range" min={1} max={50} value={seedForm.count} onChange={e => setSeedForm(f => ({ ...f, count: +e.target.value }))} style={{ width: "100%" }} />
+            <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-faint)" }}><span>1</span><span>{seedForm.count} jobs</span><span>50</span></div>
+            <button className="btn btn-primary" onClick={async () => { setSeeding(true); await apiService.seedJobs(seedForm); setSeeding(false); }} disabled={seeding}>{seeding ? "..." : "⚡ Inject Load"}</button>
+          </div></Accordion>
+          <Accordion title="Adaptive Scaling" icon="📊"><div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            {QUEUES.map(q => { const c = asc[q] || { enabled: false }; return (
+              <div key={q} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", opacity: c.enabled ? 1 : .4 }}>
+                <span style={{ fontSize: 12, fontFamily: "monospace", color: "var(--text-secondary)" }}>{q}</span>
+                <span className={`badge ${c.enabled ? "badge-completed" : "badge-pending"}`} style={{ fontSize: 9 }}>{c.enabled ? "ACTIVE" : "OFF"}</span>
+              </div>
+            ); })}
+          </div></Accordion>
         </div>
       </div>
     </div>
