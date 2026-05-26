@@ -18,6 +18,27 @@ export const workerRegistry = {
     // This prevents "ghost" heartbeats from dying processes from resurrecting the node.
     if (existing?.status === 'stopped' && !force) return
 
+    // Try to get settings from database, otherwise persist defaults
+    let dbAutoRestart = autoRestart
+    let dbAdaptiveScaling = true
+
+    try {
+      const { query } = await import('../config/db.config.js')
+      const result = await query('SELECT auto_restart, adaptive_scaling FROM worker_settings WHERE worker_id = $1', [workerId])
+      if (result.rows.length > 0) {
+        dbAutoRestart = result.rows[0].auto_restart
+        dbAdaptiveScaling = result.rows[0].adaptive_scaling
+      } else {
+        // Insert default setting
+        await query(
+          'INSERT INTO worker_settings (worker_id, auto_restart, adaptive_scaling) VALUES ($1, $2, $3) ON CONFLICT (worker_id) DO NOTHING',
+          [workerId, dbAutoRestart, dbAdaptiveScaling]
+        )
+      }
+    } catch (err) {
+      console.error('Error fetching/setting db worker settings in register:', err)
+    }
+
     const info = {
       worker_id: workerId,
       queue_name: queueName,
@@ -26,7 +47,8 @@ export const workerRegistry = {
       active_job_ids: existing?.active_job_ids || [],
       jobs_processed: existing?.jobs_processed || 0,
       jobs_failed: existing?.jobs_failed || 0,
-      auto_restart: autoRestart,
+      auto_restart: dbAutoRestart,
+      adaptive_scaling: dbAdaptiveScaling,
       last_activity: new Date(),
       started_at: existing?.started_at || new Date()
     }
@@ -86,6 +108,16 @@ export const workerRegistry = {
       w.active_job_ids = []
       if (autoRestart !== undefined) {
         w.auto_restart = autoRestart
+        // Persist to DB as well
+        try {
+          const { query } = await import('../config/db.config.js')
+          await query(
+            'INSERT INTO worker_settings (worker_id, auto_restart) VALUES ($1, $2) ON CONFLICT (worker_id) DO UPDATE SET auto_restart = EXCLUDED.auto_restart, updated_at = NOW()',
+            [workerId, autoRestart]
+          )
+        } catch (err) {
+          console.error('Error updating auto_restart in db in setStopped:', err)
+        }
       }
       w.last_activity = new Date()
       await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
@@ -104,6 +136,15 @@ export const workerRegistry = {
       w.last_activity = new Date()
       await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
     }
+    try {
+      const { query } = await import('../config/db.config.js')
+      await query(
+        'INSERT INTO worker_settings (worker_id, auto_restart) VALUES ($1, TRUE) ON CONFLICT (worker_id) DO UPDATE SET auto_restart = TRUE, updated_at = NOW()',
+        [workerId]
+      )
+    } catch (err) {
+      console.error('Error setting auto_restart in db in setRestartAt:', err)
+    }
   },
 
   /**
@@ -115,6 +156,48 @@ export const workerRegistry = {
       w.concurrency = concurrency
       w.last_activity = new Date()
       await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
+    }
+  },
+
+  /**
+   * Updates the auto_restart setting in registry and DB.
+   */
+  updateAutoRestart: async (workerId: string, autoRestart: boolean): Promise<void> => {
+    const w = await workerRegistry.get(workerId)
+    if (w) {
+      w.auto_restart = autoRestart
+      w.last_activity = new Date()
+      await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
+    }
+    try {
+      const { query } = await import('../config/db.config.js')
+      await query(
+        'INSERT INTO worker_settings (worker_id, auto_restart) VALUES ($1, $2) ON CONFLICT (worker_id) DO UPDATE SET auto_restart = EXCLUDED.auto_restart, updated_at = NOW()',
+        [workerId, autoRestart]
+      )
+    } catch (err) {
+      console.error('Error updating auto_restart in DB:', err)
+    }
+  },
+
+  /**
+   * Updates the adaptive_scaling setting in registry and DB.
+   */
+  updateAdaptiveScaling: async (workerId: string, enabled: boolean): Promise<void> => {
+    const w = await workerRegistry.get(workerId)
+    if (w) {
+      w.adaptive_scaling = enabled
+      w.last_activity = new Date()
+      await redisClient.hSet(REGISTRY_KEY, workerId, JSON.stringify(w))
+    }
+    try {
+      const { query } = await import('../config/db.config.js')
+      await query(
+        'INSERT INTO worker_settings (worker_id, adaptive_scaling) VALUES ($1, $2) ON CONFLICT (worker_id) DO UPDATE SET adaptive_scaling = EXCLUDED.adaptive_scaling, updated_at = NOW()',
+        [workerId, enabled]
+      )
+    } catch (err) {
+      console.error('Error updating adaptive_scaling in DB:', err)
     }
   },
 
@@ -146,7 +229,11 @@ export const workerRegistry = {
   get: async (workerId: string): Promise<WorkerInfo | undefined> => {
     const data = await redisClient.hGet(REGISTRY_KEY, workerId)
     if (!data) return undefined
-    return JSON.parse(data)
+    const w = JSON.parse(data)
+    if (w && w.adaptive_scaling === undefined) {
+      w.adaptive_scaling = true
+    }
+    return w
   },
 
   /**
@@ -158,6 +245,9 @@ export const workerRegistry = {
 
     for (const id in all) {
       const w: WorkerInfo = JSON.parse(all[id])
+      if (w.adaptive_scaling === undefined) {
+        w.adaptive_scaling = true
+      }
       // Return all registered workers; UI and recoverStaleWorkers handle state filtering
       workers.push(w)
     }

@@ -7,7 +7,7 @@ import { Tooltip, Accordion, SearchInput, AnimNum } from "../components/ui";
 interface WorkerInfo {
   worker_id: string; queue_name: string; status: "idle" | "processing" | "stopped";
   concurrency: number; active_job_ids: string[]; jobs_processed: number; jobs_failed: number;
-  auto_restart: boolean; restart_at?: string; last_activity: string; started_at: string;
+  auto_restart: boolean; adaptive_scaling: boolean; restart_at?: string; last_activity: string; started_at: string;
 }
 const QUEUES = ["notifications", "media", "default"];
 const ST: Record<string, { badge: string; dot: string }> = {
@@ -43,6 +43,7 @@ function WorkerCard({ w, now, onRefresh, onCrash, onStop }: {
           <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
             <span className="chip" style={{ fontFamily: "monospace" }}>queue:{w.queue_name}</span>
             {w.auto_restart && <Tooltip text="Automatically restarts on crash"><span style={{ fontSize: 10, color: "var(--green)", fontWeight: 700 }}>🛡 AUTO-HEAL</span></Tooltip>}
+            {w.adaptive_scaling !== false && <Tooltip text="Adaptive scaling enabled"><span style={{ fontSize: 10, color: "var(--accent)", fontWeight: 700 }}>📊 AUTO-SCALE</span></Tooltip>}
           </div>
         </div>
         <span className={`badge ${stale ? "badge-failed" : cfg.badge}`} style={{ fontSize: "10.5px" }}>{stale ? "OFFLINE" : w.status.toUpperCase()}</span>
@@ -75,6 +76,36 @@ function WorkerCard({ w, now, onRefresh, onCrash, onStop }: {
             <div key={i} className="capacity-seg" style={{ flex: 1, background: i < w.active_job_ids.length ? "var(--accent)" : "var(--border)" }} />
           ))}
         </div>
+      </div>
+
+      {/* Settings Toggles */}
+      <div style={{ display: "flex", gap: 16, paddingLeft: 10, marginBottom: 16 }}>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: "var(--text-secondary)", fontWeight: 600 }}>
+          <input 
+            type="checkbox" 
+            checked={w.auto_restart} 
+            onChange={async (e) => {
+              try {
+                await apiService.updateWorkerSettings(w.worker_id, { auto_restart: e.target.checked });
+                onRefresh();
+              } catch {}
+            }}
+          />
+          🛡️ Auto-Heal
+        </label>
+        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: "var(--text-secondary)", fontWeight: 600 }}>
+          <input 
+            type="checkbox" 
+            checked={w.adaptive_scaling !== false} 
+            onChange={async (e) => {
+              try {
+                await apiService.updateWorkerSettings(w.worker_id, { adaptive_scaling: e.target.checked });
+                onRefresh();
+              } catch {}
+            }}
+          />
+          📊 Auto-Scale
+        </label>
       </div>
 
       {/* Active jobs */}

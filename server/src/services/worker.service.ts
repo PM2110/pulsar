@@ -126,7 +126,10 @@ export const workerService = {
   async handleConcurrencyUpdate(queueName: string, concurrency: number) {
     for (const [workerId, q] of workerQueues.entries()) {
       if (q === queueName) {
-        await this.updateConcurrency(workerId, concurrency)
+        const info = await workerRegistry.get(workerId)
+        if (info && info.adaptive_scaling) {
+          await this.updateConcurrency(workerId, concurrency)
+        }
       }
     }
   },
