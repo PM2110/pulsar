@@ -21,3 +21,10 @@ export const updateAutoscalerConfigSchema = z.object({
     threshold: z.number().int().min(1).optional()
   })
 })
+
+export const updateWorkerSettingsSchema = z.object({
+  worker_id: z.string().min(1, 'Worker ID is required'),
+  auto_restart: z.boolean().optional(),
+  adaptive_scaling: z.boolean().optional()
+})
+

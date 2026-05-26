@@ -90,6 +90,27 @@ export const workerController = {
   /**
    * API route to simulate a worker crash by stopping the loop without registry cleanup.
    */
+  updateWorkerSettings: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { worker_id, auto_restart, adaptive_scaling } = req.body
+
+      if (auto_restart !== undefined) {
+        await workerRegistry.updateAutoRestart(worker_id, auto_restart)
+      }
+      if (adaptive_scaling !== undefined) {
+        await workerRegistry.updateAdaptiveScaling(worker_id, adaptive_scaling)
+      }
+
+      redisClient.publish('pulsar:events', JSON.stringify({ type: 'worker_update', worker_id }))
+      res.json({ message: `Settings updated for worker '${worker_id}'` })
+    } catch (err) {
+      next(err)
+    }
+  },
+
+  /**
+   * API route to simulate a worker crash by stopping the loop without registry cleanup.
+   */
   crashWorker: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { worker_id } = req.body
@@ -112,4 +133,4 @@ export const workerController = {
 }
 
 // Export distinct methods for route bindings
-export const { getWorkers, startWorker, stopWorker, crashWorker, getAutoscalerConfig, updateAutoscalerConfig } = workerController
+export const { getWorkers, startWorker, stopWorker, crashWorker, getAutoscalerConfig, updateAutoscalerConfig, updateWorkerSettings } = workerController

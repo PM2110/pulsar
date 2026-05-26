@@ -36,6 +36,10 @@ export const apiService = {
     const response = await api.post('/api/workers/crash', { worker_id });
     return response.data;
   },
+  updateWorkerSettings: async (worker_id: string, settings: { auto_restart?: boolean; adaptive_scaling?: boolean }) => {
+    const response = await api.post('/api/workers/settings', { worker_id, ...settings });
+    return response.data;
+  },
   getAutoscalerConfig: async () => {
     const response = await api.get('/api/workers/autoscaler');
     return response.data;
