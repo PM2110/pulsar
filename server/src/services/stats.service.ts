@@ -57,12 +57,33 @@ export const statsService = {
         readyJobs[q] = []
       }
 
-      // Delayed queue: job IDs + scheduled timestamp (score = ms timestamp)
-      const delayedMembers = await redisClient.zRangeWithScores(`delayed:queue:${q}`, 0, 8)
-      delayedJobs[q] = delayedMembers.map(({ value, score }) => ({
-        id: value.split(':')[0],
-        runAt: score
-      }))
+      // Delayed queue: get up to 12 IDs, then enrich with attempts and run_at from DB
+      const delayedMembers = await redisClient.zRangeWithScores(`delayed:queue:${q}`, 0, 11)
+      if (delayedMembers.length > 0) {
+        const delayedIds = delayedMembers.map(({ value }) => value.split(':')[0])
+        const runAtResult = await query(
+          `SELECT id::text, attempts, EXTRACT(EPOCH FROM run_at) * 1000 AS run_at_ms FROM jobs WHERE id = ANY($1::bigint[])`,
+          [delayedIds]
+        )
+        const dbMap: Record<string, { attempts: number; runAt: number }> = {}
+        for (const r of runAtResult.rows) {
+          dbMap[r.id] = {
+            attempts: parseInt(r.attempts, 10) || 0,
+            runAt: parseFloat(r.run_at_ms)
+          }
+        }
+        delayedJobs[q] = delayedMembers.map(({ value, score }) => {
+          const id = value.split(':')[0]
+          const dbData = dbMap[id]
+          return {
+            id,
+            attempts: dbData?.attempts ?? 0,
+            runAt: dbData?.runAt ?? score
+          }
+        })
+      } else {
+        delayedJobs[q] = []
+      }
     }
 
     // Per-queue processing jobs — with worker info from latest job_attempt
@@ -70,11 +91,13 @@ export const statsService = {
       SELECT
         j.id::text,
         j.queue_name,
+        j.attempts,
+        EXTRACT(EPOCH FROM ja.started_at) * 1000 AS started_at_ms,
         ja.worker_id,
         ja.worker_hostname
       FROM jobs j
       LEFT JOIN LATERAL (
-        SELECT worker_id, worker_hostname
+        SELECT worker_id, worker_hostname, started_at
         FROM job_attempts
         WHERE job_id = j.id AND status = 'processing'
         ORDER BY started_at DESC
@@ -84,12 +107,14 @@ export const statsService = {
       ORDER BY j.updated_at DESC
       LIMIT 20
     `)
-    const processingByQueue: Record<string, { id: string; workerId: string | null; workerHostname: string | null }[]> = {}
+    const processingByQueue: Record<string, { id: string; attempts: number; startedAt: number | null; workerId: string | null; workerHostname: string | null }[]> = {}
     for (const q of queues) processingByQueue[q] = []
     for (const row of processingResult.rows) {
       if (processingByQueue[row.queue_name]) {
         processingByQueue[row.queue_name].push({
           id: row.id,
+          attempts: parseInt(row.attempts, 10) || 0,
+          startedAt: row.started_at_ms ? parseFloat(row.started_at_ms) : null,
           workerId: row.worker_id ?? null,
           workerHostname: row.worker_hostname ?? null
         })

@@ -129,7 +129,10 @@ function WorkerCard({ w, now, onRefresh, onCrash, onStop }: {
               )}
             </div>
           </>) : (
-            <button className="btn btn-success" style={{ padding: "5px 14px", fontSize: 11 }} onClick={() => apiService.startWorker({ worker_id: w.worker_id, queue_name: w.queue_name })}>▶ Start</button>
+            <div style={{ display: "flex", gap: 6 }}>
+              <button className="btn btn-success" style={{ padding: "5px 14px", fontSize: 11 }} onClick={async () => { try { await apiService.startWorker({ worker_id: w.worker_id, queue_name: w.queue_name }); onRefresh(); } catch {} }}>▶ Start</button>
+              <button className="btn btn-danger" style={{ padding: "5px 14px", fontSize: 11 }} onClick={async () => { if (confirm(`Remove worker '${w.worker_id}' from registry?`)) { try { await apiService.deleteWorker(w.worker_id); onRefresh(); } catch {} } }}>🗑 Remove</button>
+            </div>
           )}
         </div>
       </div>

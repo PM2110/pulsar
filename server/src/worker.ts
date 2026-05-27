@@ -73,7 +73,7 @@ const start = async () => {
 
       if (processType === 'worker' || processType === 'both') {
         workerService.stopInstance(uniqueWorkerId)
-        await workerRegistry.setStopped(uniqueWorkerId)
+        await workerRegistry.unregister(uniqueWorkerId)
       }
       
       if (processType === 'scheduler' || processType === 'both') {

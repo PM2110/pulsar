@@ -305,8 +305,8 @@ export const workerRegistry = {
       if (now - lastActivity >= WORKER_TTL * 1000) {
         // Skip recovery if already intentionally stopped
         if (w.status === 'stopped') {
-          // Just cleanup the entry if it's been stopped and stale for a long time (e.g. 1 hour)
-          if (now - lastActivity > 3600 * 1000) {
+          // Just cleanup the entry if it's been stopped and stale for a long time (e.g. 5 minutes)
+          if (now - lastActivity > 300 * 1000) {
             await redisClient.hDel(REGISTRY_KEY, id)
           }
           continue

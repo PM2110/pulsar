@@ -40,6 +40,10 @@ export const apiService = {
     const response = await api.post('/api/workers/settings', { worker_id, ...settings });
     return response.data;
   },
+  deleteWorker: async (worker_id: string) => {
+    const response = await api.delete(`/api/workers/${worker_id}`);
+    return response.data;
+  },
   getAutoscalerConfig: async () => {
     const response = await api.get('/api/workers/autoscaler');
     return response.data;
