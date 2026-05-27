@@ -1,5 +1,6 @@
 import { redisClient } from '../config/redis.config.js'
 import { query } from '../config/db.config.js'
+import { logger } from '../utils/logger.js'
 
 /**
  * Service to handle job queuing logic using Redis.
@@ -25,9 +26,9 @@ export const queueService = {
         value: jobId.toString()
       })
 
-      console.log(`📡 Job ${jobId} enqueued in ${redisKey} (Score: ${score}, BaseTime: ${timestamp})`)
+      logger.info(`Job ${jobId} enqueued in ${redisKey} (Score: ${score}, BaseTime: ${timestamp})`, 'QUEUE')
     } catch (error) {
-      console.error(`❌ Failed to enqueue job ${jobId}:`, error)
+      logger.error(`Failed to enqueue job ${jobId}`, error, 'QUEUE')
       throw error
     }
   },
@@ -47,9 +48,9 @@ export const queueService = {
         value
       })
 
-      console.log(`⏳ Job ${jobId} scheduled in ${redisKey} for ${new Date(runAt).toISOString()}`)
+      logger.info(`Job ${jobId} scheduled in ${redisKey} for ${new Date(runAt).toISOString()}`, 'QUEUE')
     } catch (error) {
-      console.error(`❌ Failed to schedule job ${jobId}:`, error)
+      logger.error(`Failed to schedule job ${jobId}`, error, 'QUEUE')
       throw error
     }
   },
@@ -75,7 +76,7 @@ export const queueService = {
             const [jobId, priorityStr] = val.split(':')
             const priority = parseInt(priorityStr, 10)
 
-            console.log(`🚀 Promoting job ${jobId} (scheduled for ${new Date(originalRunAt).toISOString()})`)
+            logger.info(`Promoting job ${jobId} (scheduled for ${new Date(originalRunAt).toISOString()})`, 'QUEUE')
             // Move to main queue using its original scheduled time for ranking
             await this.enqueueJob(queueName, jobId, priority, originalRunAt)
           }
@@ -91,7 +92,7 @@ export const queueService = {
 
       return null
     } catch (error) {
-      console.error(`❌ Failed to promote jobs from ${queueName}:`, error)
+      logger.error(`Failed to promote jobs from ${queueName}`, error, 'QUEUE')
       return null
     }
   },
@@ -104,9 +105,9 @@ export const queueService = {
       const redisKey = `queue:${queueName}`
       // ZREM removes the member from the sorted set
       await redisClient.zRem(redisKey, jobId.toString())
-      console.log(`🗑️ Job ${jobId} removed from ${redisKey}`)
+      logger.info(`Job ${jobId} removed from ${redisKey}`, 'QUEUE')
     } catch (error) {
-      console.error(`❌ Failed to remove job ${jobId} from ${queueName}:`, error)
+      logger.error(`Failed to remove job ${jobId} from ${queueName}`, error, 'QUEUE')
     }
   },
 
@@ -139,11 +140,11 @@ export const queueService = {
       }
 
       if (resyncedCount > 0) {
-        console.log(`♻️ Reaper re-synced ${resyncedCount} stuck jobs for queue: ${queueName}`)
+        logger.info(`Reaper re-synced ${resyncedCount} stuck jobs for queue: ${queueName}`, 'QUEUE')
       }
       return resyncedCount
     } catch (error) {
-      console.error(`❌ Reaper failed for ${queueName}:`, error)
+      logger.error(`Reaper failed for ${queueName}`, error, 'QUEUE')
       return 0
     }
   },
@@ -185,12 +186,12 @@ export const queueService = {
       }
 
       if (boostedCount > 0) {
-        console.log(`⚖️ Fairness: Boosted ${boostedCount} jobs in queue: ${queueName}`)
+        logger.info(`Fairness: Boosted ${boostedCount} jobs in queue: ${queueName}`, 'QUEUE')
         redisClient.publish('pulsar:events', JSON.stringify({ type: 'fairness_boost', queue_name: queueName, count: boostedCount }))
       }
       return boostedCount
     } catch (error) {
-      console.error(`❌ Priority Aging failed for ${queueName}:`, error)
+      logger.error(`Priority Aging failed for ${queueName}`, error, 'QUEUE')
       return 0
     }
   }

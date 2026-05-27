@@ -7,6 +7,7 @@ import { createServer } from 'http'
 import { statsService } from './services/stats.service.js'
 import { autoscalerService } from './services/autoscaler.service.js'
 import { workerService } from './services/worker.service.js'
+import { logger } from './utils/logger.js'
 
 const start = async () => {
   const port = parseInt(env.PORT, 10) || 3000
@@ -34,7 +35,7 @@ const start = async () => {
         const eventData = JSON.parse(message)
         io.emit('job_update', eventData)
       } catch (err) {
-        console.error('Error broadcasting websocket events:', err)
+        logger.error('Error broadcasting websocket events', err, 'WEBSOCKET')
       }
     })
 
@@ -45,7 +46,7 @@ const start = async () => {
         const stats = await statsService.getStats()
         io.emit('stats_update', stats)
       } catch (err) {
-        console.error('Error broadcasting stats update:', err)
+        logger.error('Error broadcasting stats update', err, 'STATS')
       }
     }, 2000)
 
@@ -54,17 +55,17 @@ const start = async () => {
         const { queue_name, concurrency } = JSON.parse(message)
         await workerService.handleConcurrencyUpdate(queue_name, concurrency)
       } catch (err) {
-        console.error('❌ Error handling concurrency update on server:', err)
+        logger.error('Error handling concurrency update on server', err, 'AUTOSCALER')
       }
     })
 
     await pubSubClient.subscribe('pulsar:worker_restart', async (message) => {
       try {
         const { worker_id, queue_name } = JSON.parse(message)
-        console.log(`🛠️ Self-Healing: Restarting API worker instance ${worker_id} on ${queue_name}`)
+        logger.info(`Self-Healing: Restarting API worker instance ${worker_id} on ${queue_name}`, 'HEALER')
         workerService.startInstance(queue_name, worker_id)
       } catch (err) {
-        console.error('❌ Error during self-healing restart:', err)
+        logger.error('Error during self-healing restart', err, 'HEALER')
       }
     })
 
@@ -77,20 +78,20 @@ const start = async () => {
           workerService.crashInstance(worker_id)
         }
       } catch (err) {
-        console.error('❌ Error handling worker control event on server:', err)
+        logger.error('Error handling worker control event on server', err, 'SYSTEM')
       }
     })
 
-    // Client connection logging (Optional)
+    // Client connection logging
     io.on('connection', (socket) => {
-      console.log(`🔌 Client connected: ${socket.id}`)
+      logger.info(`Client connected: ${socket.id}`, 'WEBSOCKET')
       socket.on('disconnect', () => {
-        console.log(`🔌 Client disconnected: ${socket.id}`)
+        logger.info(`Client disconnected: ${socket.id}`, 'WEBSOCKET')
       })
     })
 
     const server = httpServer.listen(port, () => {
-      console.log(`🚀 Server listening on port ${port} in ${env.NODE_ENV} mode`)
+      logger.info(`Server listening on port ${port} in ${env.NODE_ENV} mode`, 'SYSTEM')
     })
     
     // Start Autoscaler Service
@@ -98,27 +99,24 @@ const start = async () => {
 
     // Graceful Shutdown
     const shutdown = async (signal: string) => {
-      console.log(`\nReceived ${signal}, shutting down gracefully...`)
+      logger.info(`Received ${signal}, shutting down gracefully...`, 'SYSTEM')
 
       server.close(async () => {
-        console.log('HTTP server closed')
+        logger.info('HTTP server closed', 'SYSTEM')
         
         // Stop Autoscaler
         autoscalerService.stop()
 
         // Close database pool
         await pool.end()
-        console.log('Database pool closed')
-
-        // Close Redis
-        // await redisClient.quit() // client will close on process exit or can be handled here
+        logger.info('Database pool closed', 'DATABASE')
 
         process.exit(0)
       })
 
       // Force close after 10s
       setTimeout(() => {
-        console.error('Could not close connections in time, forcefully shutting down')
+        logger.error('Could not close connections in time, forcefully shutting down', null, 'SYSTEM')
         process.exit(1)
       }, 10000)
     }
@@ -127,7 +125,7 @@ const start = async () => {
     process.on('SIGTERM', () => shutdown('SIGTERM'))
 
   } catch (err) {
-    console.error('Failed to start server:', err)
+    logger.error('Failed to start server', err, 'SYSTEM')
     process.exit(1)
   }
 }

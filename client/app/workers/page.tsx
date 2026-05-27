@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { apiService, socket } from "../lib/api.service";
-import { Tooltip, Accordion, SearchInput, AnimNum } from "../components/ui";
+import { Tooltip, Accordion, SearchInput, AnimNum, Checkbox, Dropdown } from "../components/ui";
 
 interface WorkerInfo {
   worker_id: string; queue_name: string; status: "idle" | "processing" | "stopped";
@@ -80,32 +80,26 @@ function WorkerCard({ w, now, onRefresh, onCrash, onStop }: {
 
       {/* Settings Toggles */}
       <div style={{ display: "flex", gap: 16, paddingLeft: 10, marginBottom: 16 }}>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: "var(--text-secondary)", fontWeight: 600 }}>
-          <input 
-            type="checkbox" 
-            checked={w.auto_restart} 
-            onChange={async (e) => {
-              try {
-                await apiService.updateWorkerSettings(w.worker_id, { auto_restart: e.target.checked });
-                onRefresh();
-              } catch {}
-            }}
-          />
-          🛡️ Auto-Heal
-        </label>
-        <label style={{ display: "flex", alignItems: "center", gap: 6, cursor: "pointer", fontSize: 11, color: "var(--text-secondary)", fontWeight: 600 }}>
-          <input 
-            type="checkbox" 
-            checked={w.adaptive_scaling !== false} 
-            onChange={async (e) => {
-              try {
-                await apiService.updateWorkerSettings(w.worker_id, { adaptive_scaling: e.target.checked });
-                onRefresh();
-              } catch {}
-            }}
-          />
-          📊 Auto-Scale
-        </label>
+        <Checkbox
+          checked={w.auto_restart}
+          onChange={async (checked) => {
+            try {
+              await apiService.updateWorkerSettings(w.worker_id, { auto_restart: checked });
+              onRefresh();
+            } catch {}
+          }}
+          label={<>🛡️ Auto-Heal</>}
+        />
+        <Checkbox
+          checked={w.adaptive_scaling !== false}
+          onChange={async (checked) => {
+            try {
+              await apiService.updateWorkerSettings(w.worker_id, { adaptive_scaling: checked });
+              onRefresh();
+            } catch {}
+          }}
+          label={<>📊 Auto-Scale</>}
+        />
       </div>
 
       {/* Active jobs */}
@@ -240,12 +234,20 @@ export default function WorkersPage() {
           <div className="card">
             <div className="card-header"><span className="card-title">Deploy Instance</span></div>
             <div className="card-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-              <div><label className="label">Queue</label><select className="select" value={nw.queue_name} onChange={e => setNw(f => ({ ...f, queue_name: e.target.value }))}>{QUEUES.map(q => <option key={q} value={q}>{q}</option>)}</select></div>
+              <div>
+                <label className="label">Queue</label>
+                <Dropdown
+                  options={QUEUES.map(q => ({ label: q, value: q }))}
+                  value={nw.queue_name}
+                  onChange={(v) => setNw(f => ({ ...f, queue_name: v }))}
+                />
+              </div>
               <div><label className="label">Worker ID</label><input className="input" placeholder="e.g. node-01" value={nw.worker_id} onChange={e => setNw(f => ({ ...f, worker_id: e.target.value }))} /></div>
-              <label style={{ display: "flex", alignItems: "center", gap: 8, cursor: "pointer" }}>
-                <input type="checkbox" checked={nw.auto_restart} onChange={e => setNw(f => ({ ...f, auto_restart: e.target.checked }))} />
-                <span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Auto-healing enabled</span>
-              </label>
+              <Checkbox
+                checked={nw.auto_restart}
+                onChange={(checked) => setNw(f => ({ ...f, auto_restart: checked }))}
+                label={<span style={{ fontSize: 12, color: "var(--text-secondary)" }}>Auto-healing enabled</span>}
+              />
               {msg && <p style={{ fontSize: 11, color: msg.ok ? "var(--green)" : "var(--red)" }}>{msg.text}</p>}
               <button className="btn btn-primary" onClick={handleStart} disabled={starting} style={{ height: 42 }}>{starting ? "Starting..." : "🚀 Deploy Node"}</button>
             </div>

@@ -3,6 +3,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { apiService, socket } from "./lib/api.service";
 import { Tooltip, Accordion, SearchInput, AnimNum } from "./components/ui";
+import { InfiniteScroll } from "./components/InfiniteScroll";
+import { useDebounce } from "./hooks/useDebounce";
+import { formatTimeIST } from "./lib/utils";
 
 interface Stats {
   jobs: { total: number; pending: number; processing: number; completed: number; failed: number };
@@ -29,24 +32,83 @@ const Q_DESC: Record<string, string> = { notifications: "Email, SMS & push notif
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
-  const [feed, setFeed] = useState<FeedEvent[]>([]);
+  const [attempts, setAttempts] = useState<any[]>([]);
+  const attemptsRef = useRef<any[]>([]);
+  const [totalAttempts, setTotalAttempts] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [feedSearch, setFeedSearch] = useState("");
+  const debouncedSearch = useDebounce(feedSearch, 300);
   const [seeding, setSeeding] = useState(false);
   const [seedForm, setSeedForm] = useState({ count: 10, queue_name: "", failure_mode: "" });
   const [seedMsg, setSeedMsg] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => Date.now());
+  const isFetchingRef = useRef(false);
 
   useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-  const fetchStats = useCallback(async () => { try { setStats(await apiService.getStats()); } catch {} }, []);
+  const fetchStats = useCallback(async () => { try { setStats(await apiService.getStats()); } catch { } }, []);
   useEffect(() => { fetchStats(); socket.on("stats_update", setStats); return () => { socket.off("stats_update"); }; }, [fetchStats]);
+
+  const fetchAttempts = useCallback(async (reset = false) => {
+    if (isFetchingRef.current) return;
+    isFetchingRef.current = true;
+    setLoadingMore(true);
+    try {
+      const currentPage = reset ? 1 : Math.floor(attemptsRef.current.length / 15) + 1;
+      const res = await apiService.getAttempts({
+        limit: 15,
+        page: currentPage,
+        search: debouncedSearch
+      });
+      const newAttempts = res.attempts || [];
+      const pagination = res.pagination || {};
+
+      setAttempts(prev => {
+        const nextVal = reset ? newAttempts : [...prev, ...newAttempts.filter((item: any) => !prev.some(p => p.id === item.id))];
+        attemptsRef.current = nextVal;
+        return nextVal;
+      });
+      setHasMore(pagination.hasMore ?? false);
+      setTotalAttempts(pagination.totalRecords || 0);
+    } catch { }
+    finally {
+      isFetchingRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [debouncedSearch]);
+
+  const loadMore = useCallback(async () => {
+    if (loadingMore || !hasMore || attempts.length === 0) return;
+    await fetchAttempts(false);
+  }, [fetchAttempts, loadingMore, hasMore, attempts.length]);
+
   useEffect(() => {
-    const h = (ev: FeedEvent) => {
-      const e = { ...ev, timestamp: ev.timestamp || new Date().toISOString() };
-      setFeed(p => [e, ...p].slice(0, 50));
-      setTimeout(() => feedRef.current?.scrollTo({ top: 0, behavior: "smooth" }), 50);
+    fetchAttempts(true);
+  }, [debouncedSearch, fetchAttempts]);
+
+  useEffect(() => {
+    const handleEvent = (data: any) => {
+      if (data.type === "attempt_update" && data.attempt) {
+        setAttempts(prev => {
+          const exists = prev.some(a => a.id === data.attempt.id);
+          let nextVal;
+          if (exists) {
+            nextVal = prev.map(a => a.id === data.attempt.id ? data.attempt : a);
+          } else {
+            setTotalAttempts(t => t + 1);
+            nextVal = [data.attempt, ...prev];
+          }
+          attemptsRef.current = nextVal;
+          return nextVal;
+        });
+      }
     };
-    socket.on("job_update", h); return () => { socket.off("job_update", h); };
+    socket.on("job_update", handleEvent);
+    return () => {
+      socket.off("job_update", handleEvent);
+    };
   }, []);
 
   const handleSeed = async () => {
@@ -64,9 +126,11 @@ export default function DashboardPage() {
   const wt = (runAt: number) => { const s = Math.max(0, Math.round((now - runAt) / 1000)); return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`; };
   const dl = (runAt: number) => { const s = Math.max(0, Math.round((runAt - now) / 1000)); return s >= 60 ? `in ${Math.floor(s / 60)}m ${s % 60}s` : `in ${s}s`; };
 
-  const filteredFeed = feedSearch
-    ? feed.filter(e => e.job_type.toLowerCase().includes(feedSearch.toLowerCase()) || e.queue_name.toLowerCase().includes(feedSearch.toLowerCase()) || e.job_id.includes(feedSearch))
-    : feed;
+  const toggleExpand = (id: string) => {
+    setExpandedIds(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const filteredAttempts = attempts;
 
   return (
     <div className="page-wrap">
@@ -128,14 +192,30 @@ export default function DashboardPage() {
               <span style={{ fontSize: 13, fontWeight: 700 }}>Status Breakdown</span>
               <span className="chip">{t.toLocaleString()} total</span>
             </div>
-            <div style={{ height: 10, borderRadius: 5, overflow: "hidden", background: "var(--bg-inset)", display: "flex", gap: 2, marginBottom: 16 }}>
-              {[
-                { v: stats?.jobs.pending ?? 0, c: "var(--text-faint)" },
-                { v: stats?.jobs.processing ?? 0, c: "var(--accent)" },
-                { v: stats?.jobs.completed ?? 0, c: "var(--green)" },
-                { v: stats?.jobs.failed ?? 0, c: "var(--red)" },
-              ].map((s, i) => <div key={i} style={{ width: `${t > 0 ? (s.v / t) * 100 : 0}%`, background: s.c, borderRadius: 4, transition: "width .5s" }} />)}
-            </div>
+            {(() => {
+              const segs = [
+                { v: stats?.jobs.pending ?? 0, c: "var(--text-faint)", label: "Pending" },
+                { v: stats?.jobs.processing ?? 0, c: "var(--accent)", label: "Processing" },
+                { v: stats?.jobs.completed ?? 0, c: "var(--green)", label: "Completed" },
+                { v: stats?.jobs.failed ?? 0, c: "var(--red)", label: "Failed" },
+              ].filter(s => s.v > 0);
+              const visibleSegs = t > 0 ? segs : [];
+              return (
+                <div style={{ height: 10, borderRadius: 5, overflow: "hidden", background: "var(--bg-inset)", display: "flex", gap: 2, marginBottom: 16 }}>
+                  {visibleSegs.map((s, i) => {
+                    const isFirst = i === 0;
+                    const isLast = i === visibleSegs.length - 1;
+                    const borderRadius = `${isFirst ? 4 : 0}px ${isLast ? 4 : 0}px ${isLast ? 4 : 0}px ${isFirst ? 4 : 0}px`;
+                    const pct = `${(s.v / t) * 100}%`;
+                    return (
+                      <Tooltip key={s.label} text={`${s.label}: ${s.v.toLocaleString()} job${s.v !== 1 ? 's' : ''} (${Math.round((s.v / t) * 100)}%)`} style={{ width: pct, transition: "width .5s", height: "100%" }}>
+                        <div style={{ width: "100%", height: "100%", background: s.c, borderRadius, cursor: "default" }} />
+                      </Tooltip>
+                    );
+                  })}
+                </div>
+              );
+            })()}
             <div style={{ display: "flex", gap: 28 }}>
               {[
                 { k: "Pending", v: stats?.jobs.pending ?? 0, c: "var(--text-faint)" },
@@ -245,11 +325,28 @@ export default function DashboardPage() {
                     <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-faint)", marginBottom: 5, fontWeight: 600 }}>
                       <span>CAPACITY</span><span>{tot} JOBS</span>
                     </div>
-                    <div className="capacity-bar">
-                      {proc.length > 0 && <div className="capacity-seg" style={{ width: `${(proc.length / Math.max(tot, 1)) * 100}%`, background: "var(--accent)" }} />}
-                      {depth > 0 && <div className="capacity-seg" style={{ width: `${(depth / Math.max(tot, 1)) * 100}%`, background: "var(--text-faint)" }} />}
-                      {delayed > 0 && <div className="capacity-seg" style={{ width: `${(delayed / Math.max(tot, 1)) * 100}%`, background: "var(--red)", opacity: .7 }} />}
-                    </div>
+                    {(() => {
+                      const capSegs = [
+                        { v: proc.length, c: "var(--accent)", label: "Processing" },
+                        { v: depth, c: "var(--text-faint)", label: "Ready" },
+                        { v: delayed, c: "var(--red)", label: "Delayed", opacity: 0.7 },
+                      ].filter(s => s.v > 0);
+                      return (
+                        <div className="capacity-bar">
+                          {capSegs.map((s, i) => {
+                            const isFirst = i === 0;
+                            const isLast = i === capSegs.length - 1;
+                            const borderRadius = `${isFirst ? 2 : 0}px ${isLast ? 2 : 0}px ${isLast ? 2 : 0}px ${isFirst ? 2 : 0}px`;
+                            const pct = `${(s.v / Math.max(tot, 1)) * 100}%`;
+                            return (
+                              <Tooltip key={s.label} text={`${s.label}: ${s.v} job${s.v !== 1 ? 's' : ''} (${Math.round((s.v / Math.max(tot, 1)) * 100)}%)`} style={{ width: pct, height: "100%", transition: "width .5s var(--ease)" }}>
+                                <div className="capacity-seg" style={{ width: "100%", height: "100%", background: s.c, borderRadius, ...(s.opacity ? { opacity: s.opacity } : {}), cursor: "default" }} />
+                              </Tooltip>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
                   </div>
                   {hasAny ? (
                     <Accordion title={`${tot} jobs in queue`} badge={<span className="acc-badge">{tot}</span>}>
@@ -313,30 +410,194 @@ export default function DashboardPage() {
 
       {/* ══════ ROW 7: LIVE FEED (accordion, open, with search) ══════ */}
       <div className="section">
-        <div className="section-label">Activity</div>
-        <Accordion title="Live Activity Feed" icon={<div className="pulse-dot pulse-green" style={{ width: 9, height: 9 }} />} desc="Real-time job state transitions via WebSocket" badge={feed.length > 0 ? <span className="acc-badge">{feed.length}</span> : undefined} defaultOpen>
+        <div className="section-label">System Logs</div>
+        <Accordion
+          title="Job Execution History"
+          icon={<div className="pulse-dot pulse-green" style={{ width: 9, height: 9 }} />}
+          desc="Real-time job attempts, latencies, and execution logs"
+          badge={totalAttempts > 0 ? <span className="acc-badge">{totalAttempts} attempts</span> : undefined}
+          defaultOpen
+        >
           <div style={{ marginBottom: 14 }}>
-            <SearchInput placeholder="Search by job type, queue, or ID..." value={feedSearch} onChange={setFeedSearch} debounceMs={200} />
+            <SearchInput placeholder="Search logs by job type, queue, ID, worker, or error..." value={feedSearch} onChange={setFeedSearch} debounceMs={0} />
           </div>
-          <div ref={feedRef} style={{ maxHeight: 320, overflowY: "auto" }}>
-            {filteredFeed.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "50px 0", color: "var(--text-faint)", fontSize: 13 }}>{feedSearch ? "No matching events" : "Waiting for job events…"}</div>
-            ) : filteredFeed.map((ev, i) => {
-              const ts = new Date(ev.timestamp).toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+          <div ref={feedRef} style={{
+            background: "var(--bg-inset)",
+            borderRadius: "var(--radius)",
+            border: "1px solid var(--border)",
+            padding: "8px",
+            fontFamily: "'IBM Plex Mono', 'JetBrains Mono', monospace",
+            color: "var(--text-secondary)",
+            fontSize: "12.5px",
+            maxHeight: "480px",
+            overflowY: "auto",
+            display: "flex",
+            flexDirection: "column"
+          }}>
+            {filteredAttempts.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "50px 0", color: "var(--text-faint)", fontSize: 13 }}>
+                {feedSearch ? "No matching log entries" : "Waiting for job execution attempts..."}
+              </div>
+            ) : filteredAttempts.map((att) => {
+              const startedTime = formatTimeIST(att.started_at) + " IST";
+              const isExpanded = !!expandedIds[att.id];
               return (
-                <div key={i} className="feed-item" style={{ display: "flex", alignItems: "center", gap: 10, padding: "8px 10px", borderRadius: 4, fontSize: 12 }}>
-                  <span style={{ color: "var(--text-faint)", fontFamily: "monospace", fontSize: 10, flexShrink: 0 }}>{ts}</span>
-                  <Tooltip text={`Full ID: ${ev.job_id}`}><span style={{ fontFamily: "monospace", color: "var(--text-dim)", fontSize: 10 }}>#{String(ev.job_id).slice(0, 8)}</span></Tooltip>
-                  <span style={{ color: "var(--text-secondary)", fontWeight: 600 }}>{ev.job_type}</span>
-                  <span className="chip" style={{ padding: "2px 6px", fontSize: 9 }}>{ev.queue_name}</span>
-                  <span className={`badge ${BADGE[ev.prev_status] || "badge-pending"}`} style={{ padding: "2px 6px" }}>{ev.prev_status}</span>
-                  <span style={{ color: "var(--text-faint)" }}>→</span>
-                  <span className={`badge ${BADGE[ev.status] || "badge-pending"}`} style={{ padding: "2px 6px" }}>{ev.status}</span>
-                  {ev.status === "processing" && <div className="spinner" />}
-                  {ev.error && <Tooltip text={ev.error}><span style={{ color: "var(--red)", fontSize: 10, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 140, display: "inline-block" }}>✗ {ev.error.slice(0, 35)}</span></Tooltip>}
+                <div key={att.id} className="feed-item" style={{
+                  padding: "10px 12px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "4px"
+                }}>
+                  {/* Log Header Row */}
+                  <div
+                    onClick={() => toggleExpand(att.id)}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      cursor: "pointer",
+                      userSelect: "none",
+                      gap: "8px",
+                      flexWrap: "wrap",
+                      width: "100%"
+                    }}
+                  >
+                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+                      {/* Collapse indicator */}
+                      <span style={{ color: "var(--text-dim)", fontSize: "10px", width: "12px", display: "inline-block" }}>
+                        {isExpanded ? "▼" : "▶"}
+                      </span>
+                      {/* Timestamp */}
+                      <span style={{ color: "var(--text-dim)", fontFamily: "monospace" }}>
+                        [{startedTime}]
+                      </span>
+                      {/* Queue */}
+                      <span style={{ color: "var(--blue)", fontWeight: 600 }}>
+                        [{att.queue_name}]
+                      </span>
+                      {/* Attempt Number */}
+                      <span style={{ color: "var(--text-dim)", fontFamily: "monospace" }}>
+                        (Attempt #{att.attempt_number})
+                      </span>
+                      {/* Job Type and ID */}
+                      <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
+                        {att.job_type}
+                      </span>
+                      <Tooltip text={`Full Job ID: ${att.job_id}`}>
+                        <span style={{ color: "var(--text-dim)", fontFamily: "monospace", fontSize: "11px" }}>
+                          #{String(att.job_id).slice(0, 8)}
+                        </span>
+                      </Tooltip>
+                      {/* Timing metrics if finished */}
+                      {att.status === "completed" && att.execution_time_ms !== null && (
+                        <span style={{ color: "var(--green)", fontSize: "11px" }}>
+                          ✓ finished in {att.execution_time_ms}ms
+                        </span>
+                      )}
+                      {att.status === "failed" && (
+                        <span style={{ color: "var(--red)", fontSize: "11px", fontWeight: "bold" }}>
+                          ✗ failed
+                        </span>
+                      )}
+                      {att.status === "processing" && (
+                        <span style={{ color: "var(--accent)", fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
+                          <span className="spinner" style={{ width: "10px", height: "10px", borderWidth: "1px" }} /> running...
+                        </span>
+                      )}
+                    </div>
+
+                    <div style={{ display: "flex", gap: "12px", alignItems: "center", color: "var(--text-dim)", fontSize: "11px", fontFamily: "monospace" }}>
+                      <span>Worker: {att.worker_id}</span>
+                    </div>
+                  </div>
+
+                  {/* Expandable Details Container */}
+                  {isExpanded && (
+                    <div style={{
+                      marginTop: "10px",
+                      padding: "16px",
+                      background: "var(--bg-card)",
+                      border: "1px solid var(--border)",
+                      borderRadius: "var(--radius-sm)",
+                      color: "var(--text-secondary)",
+                      fontSize: "12px",
+                      animation: "fadeIn 0.2s ease-out"
+                    }}>
+                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", marginBottom: "16px" }}>
+                        <div>
+                          <span style={{ color: "var(--text-dim)", fontWeight: "bold", display: "block", marginBottom: "6px", fontSize: "11px", textTransform: "uppercase" }}>Worker Metadata</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <div>ID: <code style={{ color: "var(--text-primary)", background: "var(--bg-inset)", padding: "2px 4px", borderRadius: "3px" }}>{att.worker_id}</code></div>
+                            <div>Hostname: <code style={{ color: "var(--text-primary)", background: "var(--bg-inset)", padding: "2px 4px", borderRadius: "3px" }}>{att.worker_hostname || "N/A"}</code></div>
+                            <div>Process PID: <code style={{ color: "var(--text-primary)", background: "var(--bg-inset)", padding: "2px 4px", borderRadius: "3px" }}>{att.worker_pid || "N/A"}</code></div>
+                          </div>
+                        </div>
+
+                        <div>
+                          <span style={{ color: "var(--text-dim)", fontWeight: "bold", display: "block", marginBottom: "6px", fontSize: "11px", textTransform: "uppercase" }}>Timing & Latency</span>
+                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                            <div>Scheduled: <span style={{ color: "var(--text-primary)" }}>{att.scheduled_at ? formatTimeIST(att.scheduled_at) + " IST" : "N/A"}</span></div>
+                            <div>Started At: <span style={{ color: "var(--text-primary)" }}>{formatTimeIST(att.started_at)} IST</span></div>
+                            <div>Finished At: <span style={{ color: "var(--text-primary)" }}>{att.finished_at ? formatTimeIST(att.finished_at) + " IST" : "Running..."}</span></div>
+                            <div>Queue Wait Time: <span style={{ color: att.queue_latency_ms > 10000 ? "var(--red)" : "var(--green)" }}>{att.queue_latency_ms !== null ? `${att.queue_latency_ms}ms` : "N/A"}</span></div>
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Payload */}
+                      <div style={{ marginBottom: "14px" }}>
+                        <span style={{ color: "var(--text-dim)", fontWeight: "bold", display: "block", marginBottom: "6px", fontSize: "11px", textTransform: "uppercase" }}>Job Input Payload</span>
+                        <pre style={{
+                          background: "var(--bg-inset)",
+                          padding: "12px",
+                          borderRadius: "6px",
+                          border: "1px solid var(--border)",
+                          overflowX: "auto",
+                          fontSize: "11.5px",
+                          color: "var(--text-primary)",
+                          maxHeight: "200px"
+                        }}>
+                          {JSON.stringify(att.payload, null, 2)}
+                        </pre>
+                      </div>
+
+                      {/* Failure / Error display */}
+                      {att.status === "failed" && (
+                        <div style={{ borderTop: "1px solid var(--red)", paddingTop: "14px", marginTop: "14px" }}>
+                          <span style={{ color: "var(--red)", fontWeight: "bold", display: "block", marginBottom: "6px", fontSize: "11px", textTransform: "uppercase" }}>Error Message</span>
+                          <div style={{ color: "var(--red)", fontWeight: "bold", marginBottom: "10px" }}>{att.error}</div>
+                          {att.stack_trace && (
+                            <>
+                              <span style={{ color: "var(--text-dim)", fontWeight: "bold", display: "block", marginBottom: "6px", fontSize: "11px", textTransform: "uppercase" }}>Stack Trace</span>
+                              <pre style={{
+                                background: "var(--bg-inset)",
+                                padding: "12px",
+                                borderRadius: "6px",
+                                border: "1px solid var(--border)",
+                                overflowX: "auto",
+                                fontSize: "11px",
+                                color: "var(--red)",
+                                maxHeight: "180px"
+                              }}>
+                                {att.stack_trace}
+                              </pre>
+                            </>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               );
             })}
+
+            {/* Infinite Scroll Trigger */}
+            <InfiniteScroll
+              onIntersect={loadMore}
+              hasMore={hasMore}
+              isLoading={loadingMore}
+              rootRef={feedRef}
+            />
           </div>
         </Accordion>
       </div>

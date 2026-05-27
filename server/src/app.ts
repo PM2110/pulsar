@@ -4,7 +4,6 @@ import helmet from 'helmet'
 import compression from 'compression'
 import { rateLimit } from 'express-rate-limit'
 import cookieParser from 'cookie-parser'
-import { pinoHttp } from 'pino-http'
 import { env } from './config/env.config.js'
 import { errorHandler } from './middlewares/errorHandler.middleware.js'
 import healthRoutes from './routes/health.route.js'
@@ -12,6 +11,7 @@ import jobRoutes from './routes/job.route.js'
 import statsRoutes from './routes/stats.route.js'
 import seedRoutes from './routes/seed.route.js'
 import workerRoutes from './routes/worker.route.js'
+import { logger } from './utils/logger.js'
 
 const app: Express = express()
 
@@ -33,11 +33,7 @@ if (env.NODE_ENV === 'production') {
 }
 
 // Logging
-app.use(pinoHttp({
-  transport: env.NODE_ENV === 'development'
-    ? { target: 'pino-pretty' }
-    : undefined
-}))
+app.use(logger.middleware)
 
 // CORS
 app.use(cors({

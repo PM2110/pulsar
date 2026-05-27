@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
 import { env } from '../config/env.config.js'
 import { AppError, AppErrorResponse } from '../types/error.types.js'
+import { logger } from '../utils/logger.js'
 
 export const errorHandler = (
   err: AppError,
@@ -11,8 +12,15 @@ export const errorHandler = (
   const statusCode = err.statusCode || 500
   const isDevelopment = env.NODE_ENV === 'development'
 
-  // Log error using pino-http logs
-  req.log ? req.log.error(err) : console.error(err)
+  // Store error message for the response log
+  res.locals.errorMessage = err.message
+
+  // Log error using custom logger (only log stack trace details if it is a 500+ error)
+  if (statusCode >= 500) {
+    logger.error(`API Exception on ${req.method} ${req.originalUrl || req.url}`, err, 'API')
+  } else {
+    logger.warn(`API Bad Request on ${req.method} ${req.originalUrl || req.url}: ${err.message}`, 'API')
+  }
 
   const response: AppErrorResponse = {
     statusCode,

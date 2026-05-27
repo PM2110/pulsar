@@ -3,10 +3,11 @@ import { connectRedis, redisClient } from './config/redis.config.js'
 import { pool } from './config/db.config.js'
 import { workerService } from './services/worker.service.js'
 import { workerRegistry } from './services/worker.registry.js'
+import { logger } from './utils/logger.js'
 import os from 'os'
 
 const start = async () => {
-  console.log(`📡 Worker process starting in ${env.NODE_ENV} mode...`)
+  logger.info(`Worker process starting in ${env.NODE_ENV} mode...`, 'WORKER')
 
   try {
     // Connect to external services
@@ -34,7 +35,7 @@ const start = async () => {
           const { queue_name, concurrency } = JSON.parse(message)
           await workerService.handleConcurrencyUpdate(queue_name, concurrency)
         } catch (err) {
-          console.error('❌ Error handling concurrency update:', err)
+          logger.error('Error handling concurrency update', err, 'WORKER')
         }
       })
 
@@ -43,22 +44,22 @@ const start = async () => {
           const { action, worker_id } = JSON.parse(message)
           if (worker_id === uniqueWorkerId) {
             if (action === 'stop') {
-              console.log(`🛑 Received stop signal via PubSub for worker ${worker_id}`)
+              logger.info(`Received stop signal via PubSub for worker ${worker_id}`, 'WORKER')
               // Stop both the singleton loop and the named instance (clears heartbeat immediately)
               workerService.stop()
               workerService.stopInstance(uniqueWorkerId)
             } else if (action === 'start') {
-              console.log(`🚀 Received start signal via PubSub for worker ${worker_id}`)
+              logger.info(`Received start signal via PubSub for worker ${worker_id}`, 'WORKER')
               // Use startInstance() — it tracks heartbeats per worker ID and avoids singleton flag collisions
               workerService.startInstance(env.QUEUE_NAME, uniqueWorkerId)
             } else if (action === 'crash') {
-              console.log(`☠ Received crash signal via PubSub for worker ${worker_id}. Simulating crash.`)
+              logger.warn(`Received crash signal via PubSub for worker ${worker_id}. Simulating crash.`, 'WORKER')
               workerService.stop()
               workerService.crashInstance(uniqueWorkerId)
             }
           }
         } catch (err) {
-          console.error('❌ Error handling worker control event:', err)
+          logger.error('Error handling worker control event', err, 'WORKER')
         }
       })
 
@@ -68,7 +69,7 @@ const start = async () => {
 
     // Graceful Shutdown
     const shutdown = async (signal: string) => {
-      console.log(`\nReceived ${signal}, shutting down gracefully...`)
+      logger.info(`Received ${signal}, shutting down gracefully...`, 'WORKER')
 
       if (processType === 'worker' || processType === 'both') {
         workerService.stopInstance(uniqueWorkerId)
@@ -82,7 +83,7 @@ const start = async () => {
 
       // Close database pool
       await pool.end()
-      console.log('Database pool closed')
+      logger.info('Database pool closed', 'DATABASE')
 
       // Exit process
       process.exit(0)
@@ -92,7 +93,7 @@ const start = async () => {
     process.on('SIGTERM', () => shutdown('SIGTERM'))
 
   } catch (err) {
-    console.error('Failed to start worker:', err)
+    logger.error('Failed to start worker', err, 'WORKER')
     process.exit(1)
   }
 }

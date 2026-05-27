@@ -94,6 +94,17 @@ export const jobController = {
       const limit = Number(req.query.limit) || 50
       const offset = Number(req.query.offset) || 0
 
+      // Whitelist columns and order directions to prevent SQL Injection and syntax errors
+      const allowedColumns = ['id', 'job_type', 'queue_name', 'status', 'priority', 'failure_mode', 'created_at', 'updated_at', 'attempts', 'max_attempts']
+      const allowedOrders = ['asc', 'desc']
+
+      const sort_by = allowedColumns.includes(req.query.sort_by as string)
+        ? (req.query.sort_by as string)
+        : 'id'
+      const sort_order = allowedOrders.includes(String(req.query.sort_order).toLowerCase())
+        ? String(req.query.sort_order).toLowerCase()
+        : 'asc'
+
       let queryText = 'SELECT * FROM jobs WHERE 1=1'
       const params: any[] = []
 
@@ -106,7 +117,7 @@ export const jobController = {
         queryText += ` AND queue_name = $${params.length}`
       }
 
-      queryText += ` ORDER BY id ASC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`
+      queryText += ` ORDER BY ${sort_by} ${sort_order} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`
 
       let countQueryText = 'SELECT COUNT(*) as total FROM jobs WHERE 1=1'
       if (status) countQueryText += ` AND status = $1`
@@ -119,9 +130,24 @@ export const jobController = {
         query(countQueryText, params.slice(0, -2))
       ])
 
+      const totalRecords = parseInt(countResult.rows[0].total, 10)
+      const totalPages = Math.ceil(totalRecords / limit)
+      const currentPage = Math.floor(offset / limit) + 1
+      const hasMore = offset + limit < totalRecords
+
+      const jobs = offset >= totalRecords && totalRecords > 0 ? [] : result.rows
+
       res.json({
-        jobs: result.rows,
-        meta: { limit, offset, count: parseInt(countResult.rows[0].total, 10) }
+        jobs,
+        meta: { limit, offset, count: totalRecords },
+        pagination: {
+          totalRecords,
+          totalPages,
+          currentPage,
+          limit,
+          offset,
+          hasMore
+        }
       })
     } catch (err) {
       next(err)
@@ -135,10 +161,16 @@ export const jobController = {
   getJobById: async (req: Request, res: Response, next: NextFunction) => {
     try {
       const { id } = req.params
-      const result = await query('SELECT * FROM jobs WHERE id = $1', [id])
+      const [jobRes, attemptsRes] = await Promise.all([
+        query('SELECT * FROM jobs WHERE id = $1', [id]),
+        query('SELECT * FROM job_attempts WHERE job_id = $1 ORDER BY attempt_number ASC', [id])
+      ])
 
-      if (result.rows.length === 0) return res.status(404).json({ error: 'Job not found' })
-      res.json({ job: result.rows[0] })
+      if (jobRes.rows.length === 0) return res.status(404).json({ error: 'Job not found' })
+      res.json({
+        job: jobRes.rows[0],
+        attempts: attemptsRes.rows
+      })
     } catch (err) {
       next(err)
     }
@@ -285,8 +317,131 @@ export const jobController = {
     } finally {
       if (client) client.release()
     }
+  },
+
+  /**
+   * GET /api/jobs/attempts
+   * Retrieves a list of job attempts with details.
+   */
+  getAttempts: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const limit = Number(req.query.limit) || 100
+      const page = Number(req.query.page) || 1
+      const offset = (page - 1) * limit
+      const status = req.query.status as string | undefined
+      const queue_name = req.query.queue_name as string | undefined
+      const job_type = req.query.job_type as string | undefined
+      const search = req.query.search as string | undefined
+
+      let queryText = `
+        SELECT 
+          ja.id::text,
+          ja.job_id::text,
+          ja.attempt_number,
+          ja.status,
+          ja.worker_id,
+          ja.error,
+          ja.stack_trace,
+          ja.started_at,
+          ja.finished_at,
+          ja.created_at,
+          ja.scheduled_at,
+          ja.worker_hostname,
+          ja.worker_pid,
+          ja.queue_latency_ms,
+          ja.execution_time_ms,
+          j.job_type,
+          j.queue_name,
+          j.payload
+        FROM job_attempts ja
+        JOIN jobs j ON ja.job_id = j.id
+        WHERE 1=1
+      `
+      const params: any[] = []
+
+      if (status) {
+        params.push(status)
+        queryText += ` AND ja.status = $${params.length}`
+      }
+      if (queue_name) {
+        params.push(queue_name)
+        queryText += ` AND j.queue_name = $${params.length}`
+      }
+      if (job_type) {
+        params.push(job_type)
+        queryText += ` AND j.job_type = $${params.length}`
+      }
+      if (search) {
+        params.push(`%${search}%`)
+        queryText += ` AND (
+          j.job_type ILIKE $${params.length} OR
+          j.queue_name ILIKE $${params.length} OR
+          ja.job_id::text ILIKE $${params.length} OR
+          ja.worker_id ILIKE $${params.length} OR
+          ja.error ILIKE $${params.length}
+        )`
+      }
+
+      queryText += ` ORDER BY ja.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`
+      params.push(limit, offset)
+
+      const result = await query(queryText, params)
+
+      // Count Query
+      const countParams: any[] = []
+      let countQueryText = `
+        SELECT COUNT(*) as total 
+        FROM job_attempts ja
+        JOIN jobs j ON ja.job_id = j.id
+        WHERE 1=1
+      `
+      if (status) {
+        countParams.push(status)
+        countQueryText += ` AND ja.status = $${countParams.length}`
+      }
+      if (queue_name) {
+        countParams.push(queue_name)
+        countQueryText += ` AND j.queue_name = $${countParams.length}`
+      }
+      if (job_type) {
+        countParams.push(job_type)
+        countQueryText += ` AND j.job_type = $${countParams.length}`
+      }
+      if (search) {
+        countParams.push(`%${search}%`)
+        countQueryText += ` AND (
+          j.job_type ILIKE $${countParams.length} OR
+          j.queue_name ILIKE $${countParams.length} OR
+          ja.job_id::text ILIKE $${countParams.length} OR
+          ja.worker_id ILIKE $${countParams.length} OR
+          ja.error ILIKE $${countParams.length}
+        )`
+      }
+
+      const countResult = await query(countQueryText, countParams)
+      const totalRecords = parseInt(countResult.rows[0].total, 10)
+      const totalPages = Math.ceil(totalRecords / limit)
+      const currentPage = page
+      const hasMore = offset + limit < totalRecords
+
+      const attempts = offset >= totalRecords && totalRecords > 0 ? [] : result.rows
+
+      res.json({
+        attempts,
+        pagination: {
+          totalRecords,
+          totalPages,
+          currentPage,
+          limit,
+          offset,
+          hasMore
+        }
+      })
+    } catch (err) {
+      next(err)
+    }
   }
 }
 
 // Named exports for expressive explicit router associations
-export const { createJob, getJobs, getJobById, updateJob, deleteJob, retryJob } = jobController
+export const { createJob, getJobs, getJobById, updateJob, deleteJob, retryJob, getAttempts } = jobController

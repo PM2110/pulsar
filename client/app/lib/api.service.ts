@@ -54,6 +54,10 @@ export const apiService = {
     const response = await api.get('/api/jobs', { params });
     return response.data;
   },
+  getAttempts: async (params?: any) => {
+    const response = await api.get('/api/jobs/attempts', { params });
+    return response.data;
+  },
   getJobDetails: async (id: string) => {
     const response = await api.get(`/api/jobs/${id}`);
     return response.data;

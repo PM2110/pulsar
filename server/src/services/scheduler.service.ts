@@ -1,6 +1,7 @@
 import { DEFAULT_QUEUE } from '../config/queue.config.js'
 import { queueService } from './queue.service.js'
 import { outboxService } from './outbox.service.js'
+import { logger } from '../utils/logger.js'
 
 /**
  * Service to handle periodic promotion of delayed jobs to the main queue.
@@ -18,7 +19,7 @@ export const schedulerService = {
   async start(queueName: string = DEFAULT_QUEUE) {
     if (this.isRunning) return
     this.isRunning = true
-    console.log(`⏰ Redis Scheduler started for queue: ${queueName}`)
+    logger.info(`Redis Scheduler started for queue: ${queueName}`, 'SCHEDULER')
 
     while (this.isRunning) {
       try {
@@ -38,7 +39,7 @@ export const schedulerService = {
 
         // 3. Run Priority Aging (Queue Fairness - every 30s)
         // Boosts jobs that have been waiting too long to prevent starvation.
-        if (now - this.lastAgingRun > 30000) {
+        if (now - this.lastAgingRun > 3000) {
           await queueService.applyPriorityAging(queueName)
           this.lastAgingRun = now
         }
@@ -61,12 +62,12 @@ export const schedulerService = {
         const sleepTime = nextWait !== null ? Math.min(1000, nextWait) : 1000
 
         if (nextWait !== null && nextWait < 1000) {
-          console.log(`💤 Next job due in ${nextWait}ms. Sleeping...`)
+          logger.info(`Next job due in ${nextWait}ms. Sleeping...`, 'SCHEDULER')
         }
 
         await new Promise(resolve => setTimeout(resolve, sleepTime))
       } catch (error) {
-        console.error('❌ Scheduler error:', error)
+        logger.error('Scheduler error', error, 'SCHEDULER')
         await new Promise(resolve => setTimeout(resolve, 5000))
       }
     }
@@ -77,6 +78,6 @@ export const schedulerService = {
    */
   stop() {
     this.isRunning = false
-    console.log('🛑 Scheduler stopping...')
+    logger.info('Scheduler stopping...', 'SCHEDULER')
   }
 }
