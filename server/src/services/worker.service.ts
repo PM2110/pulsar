@@ -214,6 +214,8 @@ export const workerService = {
     let job: any
     let attemptId: string | number | undefined
     const startedAt = new Date()
+    let scheduledAt: Date | undefined
+    let queueLatencyMs: number | undefined
 
     try {
       // Fetch job from DB, increment attempts and update status to 'processing'
@@ -262,8 +264,8 @@ export const workerService = {
       workerRegistry.setProcessing(workerId, jobId)
 
       // Calculate Latency
-      const scheduledAt = new Date(job.run_at)
-      const queueLatencyMs = startedAt.getTime() - scheduledAt.getTime()
+      scheduledAt = new Date(job.run_at)
+      queueLatencyMs = startedAt.getTime() - scheduledAt.getTime()
 
       // Log attempt start in job_attempts
       const attemptResult = await query(
@@ -282,6 +284,26 @@ export const workerService = {
         [jobId, job.attempts, workerId, startedAt, scheduledAt, os.hostname(), process.pid, queueLatencyMs]
       )
       attemptId = attemptResult.rows[0].id
+
+      // Broadcast attempt start
+      redisClient.publish('pulsar:events', JSON.stringify({
+        type: 'attempt_update',
+        attempt: {
+          id: attemptId ? attemptId.toString() : '',
+          job_id: jobId.toString(),
+          attempt_number: job.attempts,
+          status: 'processing',
+          worker_id: workerId,
+          started_at: startedAt.toISOString(),
+          scheduled_at: scheduledAt ? scheduledAt.toISOString() : '',
+          worker_hostname: os.hostname(),
+          worker_pid: process.pid,
+          queue_latency_ms: queueLatencyMs,
+          job_type: job.job_type,
+          queue_name: job.queue_name,
+          payload: job.payload
+        }
+      }))
 
       // Determine if the job should fail
       let shouldFail = false
@@ -329,6 +351,28 @@ export const workerService = {
 
       // Broadcast completion
       redisClient.publish('pulsar:events', JSON.stringify({ type: 'job_update', job_id: jobId, status: 'completed' }))
+
+      // Broadcast attempt completion
+      redisClient.publish('pulsar:events', JSON.stringify({
+        type: 'attempt_update',
+        attempt: {
+          id: attemptId ? attemptId.toString() : '',
+          job_id: jobId.toString(),
+          attempt_number: job.attempts,
+          status: 'completed',
+          worker_id: workerId,
+          started_at: startedAt.toISOString(),
+          finished_at: finishedAt.toISOString(),
+          scheduled_at: scheduledAt ? scheduledAt.toISOString() : '',
+          worker_hostname: os.hostname(),
+          worker_pid: process.pid,
+          queue_latency_ms: queueLatencyMs,
+          execution_time_ms: executionTimeMs,
+          job_type: job.job_type,
+          queue_name: job.queue_name,
+          payload: job.payload
+        }
+      }))
     } catch (error: any) {
       logger.error(`Failed to process job ${jobId}`, error, 'JOB')
       const finishedAt = new Date()
@@ -382,6 +426,32 @@ export const workerService = {
 
         // Broadcast failure or retry
         redisClient.publish('pulsar:events', JSON.stringify({ type: 'job_update', job_id: jobId, status: newStatus, error: errorMessage }))
+
+        // Broadcast attempt failure
+        if (attemptId) {
+          redisClient.publish('pulsar:events', JSON.stringify({
+            type: 'attempt_update',
+            attempt: {
+              id: attemptId.toString(),
+              job_id: jobId.toString(),
+              attempt_number: job.attempts,
+              status: 'failed',
+              error: errorMessage,
+              stack_trace: error.stack || null,
+              worker_id: workerId,
+              started_at: startedAt.toISOString(),
+              finished_at: finishedAt.toISOString(),
+              scheduled_at: scheduledAt ? scheduledAt.toISOString() : '',
+              worker_hostname: os.hostname(),
+              worker_pid: process.pid,
+              queue_latency_ms: queueLatencyMs || 0,
+              execution_time_ms: executionTimeMs,
+              job_type: job.job_type,
+              queue_name: job.queue_name,
+              payload: job.payload
+            }
+          }))
+        }
       }
       await workerRegistry.incrementFailed(workerId)
       await workerRegistry.setIdle(workerId, jobId)

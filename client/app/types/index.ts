@@ -28,6 +28,27 @@ export interface JobAttempt {
   error: string | null;
 }
 
+export interface EnrichedJobAttempt {
+  id: string;
+  job_id: string;
+  attempt_number: number;
+  status: string;
+  worker_id: string;
+  error: string | null;
+  stack_trace: string | null;
+  started_at: string;
+  finished_at: string | null;
+  created_at: string;
+  scheduled_at: string | null;
+  worker_hostname: string | null;
+  worker_pid: number | null;
+  queue_latency_ms: number | null;
+  execution_time_ms: number | null;
+  job_type: string;
+  queue_name: string;
+  payload: any;
+}
+
 export interface WorkerInfo {
   worker_id: string;
   queue_name: string;
