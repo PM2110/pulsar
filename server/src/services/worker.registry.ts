@@ -337,29 +337,59 @@ export const workerRegistry = {
           const { query } = await import('../config/db.config.js')
 
           // Check if we can retry
-          const jobQuery = await query('SELECT attempts, max_attempts FROM jobs WHERE id = $1 AND status = $2', [jobId, 'processing'])
+          const jobQuery = await query(
+            'SELECT attempts, max_attempts, infra_attempts, max_infra_attempts FROM jobs WHERE id = $1 AND status = $2',
+            [jobId, 'processing']
+          )
           if (jobQuery.rows.length === 0) continue
 
           const job = jobQuery.rows[0]
-          const canRetry = job.attempts < job.max_attempts
+          const nextInfraAttempts = job.infra_attempts + 1
+          const nextAttempts = Math.max(0, job.attempts - 1)
+          const canRetry = (nextAttempts < job.max_attempts) && (nextInfraAttempts < job.max_infra_attempts)
           const newStatus = canRetry ? 'pending' : 'failed'
 
           await query(
             `UPDATE jobs 
              SET status = $1, 
+                 attempts = $2,
+                 infra_attempts = $3,
                  updated_at = NOW(), 
-                 last_error = 'Worker crash recovery triggered.'
-             WHERE id = $2 AND status = 'processing'`,
-            [newStatus, jobId]
+                 last_error = 'Worker crashed during execution',
+                 run_at = NOW(),
+                 failed_at = $4
+             WHERE id = $5 AND status = 'processing'`,
+            [newStatus, nextAttempts, nextInfraAttempts, canRetry ? null : new Date(), jobId]
           )
 
-          // Add a failed attempt log entry for tracking
-          await query(
-            `INSERT INTO job_attempts (job_id, attempt_number, status, error, worker_id)
-             SELECT id, attempts, 'failed', 'Worker crashed during execution', $2
-             FROM jobs WHERE id = $1`,
+          // 1. Find the existing 'processing' attempt for this job and worker
+          const attemptQuery = await query(
+            `SELECT id FROM job_attempts 
+             WHERE job_id = $1 AND worker_id = $2 AND status = 'processing'
+             ORDER BY started_at DESC LIMIT 1`,
             [jobId, workerId]
           )
+
+          if (attemptQuery.rows.length > 0) {
+            // Update the existing attempt to failed with worker crash details
+            const attemptId = attemptQuery.rows[0].id
+            await query(
+              `UPDATE job_attempts 
+               SET status = 'failed', 
+                   error = 'Worker crashed during execution', 
+                   finished_at = NOW(),
+                   execution_time_ms = EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000
+               WHERE id = $1`,
+              [attemptId]
+            )
+          } else {
+            // Fallback: If no processing record was found (e.g. race condition), insert a new failed attempt
+            await query(
+              `INSERT INTO job_attempts (job_id, attempt_number, status, error, worker_id, finished_at, execution_time_ms)
+               VALUES ($1, $2, 'failed', 'Worker crashed during execution', $3, NOW(), 0)`,
+              [jobId, job.attempts, workerId]
+            )
+          }
 
           // Re-enqueue in Redis if allowed
           if (canRetry) {

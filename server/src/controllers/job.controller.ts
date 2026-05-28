@@ -23,7 +23,8 @@ export const jobController = {
         run_at,
         failure_mode,
         fail_probability,
-        idempotency_key
+        idempotency_key,
+        max_infra_attempts
       } = req.body
 
       const queue_name = provided_queue_name || QUEUE_MAP[job_type] || DEFAULT_QUEUE
@@ -34,16 +35,18 @@ export const jobController = {
       const insertQuery = `
         INSERT INTO jobs (
           queue_name, job_type, payload, status, priority, 
-          max_attempts, run_at, failure_mode, fail_probability, idempotency_key
+          max_attempts, run_at, failure_mode, fail_probability, idempotency_key,
+          max_infra_attempts
         ) 
-        VALUES ($1, $2, $3, 'pending', $4, $5, COALESCE($6, NOW()), $7, $8, $9)
+        VALUES ($1, $2, $3, 'pending', $4, $5, COALESCE($6, NOW()), $7, $8, $9, COALESCE($10, 3))
         ON CONFLICT (idempotency_key) DO NOTHING
         RETURNING *
       `
 
       const values = [
         queue_name, job_type, JSON.stringify(payload), priority, max_attempts,
-        run_at || null, failure_mode, fail_probability, idempotency_key || null
+        run_at || null, failure_mode, fail_probability, idempotency_key || null,
+        max_infra_attempts !== undefined ? max_infra_attempts : null
       ]
 
       const result = await client.query(insertQuery, values)
@@ -95,7 +98,7 @@ export const jobController = {
       const offset = Number(req.query.offset) || 0
 
       // Whitelist columns and order directions to prevent SQL Injection and syntax errors
-      const allowedColumns = ['id', 'job_type', 'queue_name', 'status', 'priority', 'failure_mode', 'created_at', 'updated_at', 'attempts', 'max_attempts']
+      const allowedColumns = ['id', 'job_type', 'queue_name', 'status', 'priority', 'failure_mode', 'created_at', 'updated_at', 'attempts', 'max_attempts', 'infra_attempts', 'max_infra_attempts']
       const allowedOrders = ['asc', 'desc']
 
       const sort_by = allowedColumns.includes(req.query.sort_by as string)
@@ -352,7 +355,9 @@ export const jobController = {
           ja.execution_time_ms,
           j.job_type,
           j.queue_name,
-          j.payload
+          j.payload,
+          j.infra_attempts,
+          j.max_infra_attempts
         FROM job_attempts ja
         JOIN jobs j ON ja.job_id = j.id
         WHERE 1=1
