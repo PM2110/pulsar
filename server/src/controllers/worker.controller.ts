@@ -129,8 +129,19 @@ export const workerController = {
     } catch (err) {
       next(err)
     }
+  },
+
+  deleteWorker: async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const worker_id = String(req.params.worker_id)
+      await workerRegistry.unregister(worker_id)
+      redisClient.publish('pulsar:events', JSON.stringify({ type: 'worker_update', worker_id }))
+      res.json({ message: `Worker '${worker_id}' removed from registry` })
+    } catch (err) {
+      next(err)
+    }
   }
 }
 
 // Export distinct methods for route bindings
-export const { getWorkers, startWorker, stopWorker, crashWorker, getAutoscalerConfig, updateAutoscalerConfig, updateWorkerSettings } = workerController
+export const { getWorkers, startWorker, stopWorker, crashWorker, getAutoscalerConfig, updateAutoscalerConfig, updateWorkerSettings, deleteWorker } = workerController

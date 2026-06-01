@@ -13,8 +13,8 @@ interface Stats {
   queues: {
     depths: Record<string, number>; delayed: Record<string, number>;
     readyJobs: Record<string, { id: string; runAt: number }[]>;
-    delayedJobs: Record<string, { id: string; runAt: number }[]>;
-    processing: Record<string, { id: string; workerId: string | null; workerHostname: string | null }[]>;
+    delayedJobs: Record<string, { id: string; runAt: number; attempts: number }[]>;
+    processing: Record<string, { id: string; attempts: number; startedAt: number | null; workerId: string | null; workerHostname: string | null }[]>;
   };
   attempts: { total: number; successful: number; failed: number; avg_execution_ms: number; avg_latency_ms: number };
   throughput_last_60s: number; stuck_jobs_count: number;
@@ -348,15 +348,108 @@ export default function DashboardPage() {
                       );
                     })()}
                   </div>
-                  {hasAny ? (
-                    <Accordion title={`${tot} jobs in queue`} badge={<span className="acc-badge">{tot}</span>}>
-                      {proc.map(j => <div key={j.id} style={{ display: "inline-flex", padding: "5px 10px", borderRadius: 4, background: "var(--accent-soft)", border: "1px solid var(--accent)", fontSize: 11, fontFamily: "monospace", fontWeight: 600, color: "var(--accent)", marginRight: 6, marginBottom: 4 }}>#{j.id}</div>)}
-                      {ready.map((r, i) => <div key={`${r.id}-${i}`} style={{ display: "inline-flex", padding: "5px 10px", borderRadius: 4, background: "var(--bg-inset)", border: "1px solid var(--border)", fontSize: 11, fontFamily: "monospace", color: "var(--text-dim)", marginRight: 6, marginBottom: 4 }}>#{r.id} <span style={{ fontSize: 9, color: "var(--text-faint)", marginLeft: 4 }}>wait {wt(r.runAt)}</span></div>)}
-                      {delItems.map((d, i) => <div key={`${d.id}-${i}`} style={{ display: "inline-flex", padding: "5px 10px", borderRadius: 4, background: "var(--red-soft)", border: "1px solid var(--red)", fontSize: 11, fontFamily: "monospace", color: "var(--red)", opacity: .85, marginRight: 6, marginBottom: 4 }}>#{d.id} <span style={{ fontSize: 9, marginLeft: 4 }}>{dl(d.runAt)}</span></div>)}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
+                    {/* Active & Pending Queue Accordion */}
+                    <Accordion 
+                      title="Active & Ready Queue" 
+                      badge={<span className="acc-badge" style={{ background: "var(--accent-soft)", color: "var(--text-primary)" }}>{proc.length + depth}</span>}
+                      defaultOpen={proc.length + depth > 0}
+                    >
+                      {proc.length + ready.length === 0 ? (
+                        <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-faint)", fontStyle: "italic", padding: "8px 0" }}>
+                          No active or ready jobs
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+                          {/* Processing/Active Jobs (Green shaded box) */}
+                          {proc.map(j => {
+                            const elapsed = j.startedAt ? wt(j.startedAt) : "just now";
+                            return (
+                              <div key={j.id} style={{
+                                background: "var(--green-soft)",
+                                border: "1px solid rgba(52, 211, 153, 0.2)",
+                                borderRadius: "var(--radius-sm)",
+                                padding: "10px 12px",
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: 4,
+                                color: "var(--green)"
+                              }}>
+                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: "12px" }}>
+                                  <span>Job ID: #{j.id}</span>
+                                  <span style={{ fontSize: "10px", textTransform: "uppercase", background: "rgba(52, 211, 153, 0.15)", padding: "2px 6px", borderRadius: 4, fontWeight: 800 }}>Processing</span>
+                                </div>
+                                <div style={{ fontSize: "11px", color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: 2 }}>
+                                  <div>Attempt: <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>#{j.attempts}</span></div>
+                                  <div>Worker: <code style={{ color: "var(--text-primary)", background: "var(--bg-inset)", padding: "1px 4px", borderRadius: 3, fontSize: "10.5px" }}>{j.workerId || "unknown"}</code> {j.workerHostname ? `(${j.workerHostname})` : ""}</div>
+                                  <div>Running for: <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{elapsed}</span></div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                          
+                          {/* Waiting/Pending/Ready Jobs (Grey shaded box) */}
+                          {ready.map((r, i) => (
+                            <div key={`${r.id}-${i}`} style={{
+                              background: "var(--bg-inset)",
+                              border: "1px solid var(--border)",
+                              borderRadius: "var(--radius-sm)",
+                              padding: "10px 12px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 4,
+                              color: "var(--text-secondary)"
+                            }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: "12px" }}>
+                                <span>Job ID: #{r.id}</span>
+                                <span style={{ fontSize: "10px", textTransform: "uppercase", background: "var(--border)", padding: "2px 6px", borderRadius: 4, color: "var(--text-dim)", fontWeight: 800 }}>Ready</span>
+                              </div>
+                              <div style={{ fontSize: "11px", color: "var(--text-dim)", display: "flex", flexDirection: "column", gap: 2 }}>
+                                <div>Waiting time: <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{wt(r.runAt)}</span></div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </Accordion>
-                  ) : (
-                    <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-faint)", fontStyle: "italic", padding: "8px 0" }}>Queue idle — no pending jobs</div>
-                  )}
+
+                    {/* Delayed Queue Accordion */}
+                    <Accordion 
+                      title="Delayed Queue" 
+                      badge={<span className="acc-badge" style={{ background: "var(--red-soft)", color: "var(--red)" }}>{delayed}</span>}
+                      defaultOpen={delayed > 0}
+                    >
+                      {delItems.length === 0 ? (
+                        <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-faint)", fontStyle: "italic", padding: "8px 0" }}>
+                          No delayed jobs
+                        </div>
+                      ) : (
+                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
+                          {delItems.map((d, i) => (
+                            <div key={`${d.id}-${i}`} style={{
+                              background: "var(--red-soft)",
+                              border: "1px solid rgba(248, 113, 113, 0.2)",
+                              borderRadius: "var(--radius-sm)",
+                              padding: "10px 12px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: 4,
+                              color: "var(--red)"
+                            }}>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: "12px" }}>
+                                <span>Job ID: #{d.id}</span>
+                                <span style={{ fontSize: "10px", textTransform: "uppercase", background: "rgba(248, 113, 113, 0.15)", padding: "2px 6px", borderRadius: 4, fontWeight: 800 }}>Delayed</span>
+                              </div>
+                              <div style={{ fontSize: "11px", color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: 2 }}>
+                                <div>Attempts made: <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{d.attempts}</span></div>
+                                <div>Remaining delay: <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{dl(d.runAt)}</span></div>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </Accordion>
+                  </div>
                 </div>
               );
             })}
@@ -477,7 +570,7 @@ export default function DashboardPage() {
                       </span>
                       {/* Attempt Number */}
                       <span style={{ color: "var(--text-dim)", fontFamily: "monospace" }}>
-                        (Attempt #{att.attempt_number})
+                        (Attempt #{att.business_attempt}{att.infra_attempt > 0 ? `, Infra #${att.infra_attempt}` : ''})
                       </span>
                       {/* Job Type and ID */}
                       <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
