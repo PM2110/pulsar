@@ -303,7 +303,13 @@ export const jobController = {
 
       const updateQuery = `
         UPDATE jobs
-        SET status = 'pending', last_error = NULL, failed_at = NULL, updated_at = NOW(), run_at = NOW()
+        SET status = 'pending', 
+            attempts = 0, 
+            infra_attempts = 0, 
+            last_error = NULL, 
+            failed_at = NULL, 
+            updated_at = NOW(), 
+            run_at = NOW()
         WHERE id = $1
         RETURNING *
       `

@@ -27,6 +27,7 @@ export const workerService = {
   async start(queueName: string = DEFAULT_QUEUE, workerId: string = 'worker-1') {
     if (this.isRunning) return
     this.isRunning = true
+    runningInstances.set(workerId, true)
     instanceConcurrency.set(workerId, 1)
     workerQueues.set(workerId, queueName)
     activeTasks.set(workerId, new Set())
@@ -169,6 +170,9 @@ export const workerService = {
    */
   stop() {
     this.isRunning = false
+    for (const key of runningInstances.keys()) {
+      runningInstances.set(key, false)
+    }
     if (this.singletonHeartbeat) {
       clearInterval(this.singletonHeartbeat)
       this.singletonHeartbeat = null
@@ -196,8 +200,8 @@ export const workerService = {
     // Use non-blocking zPopMin to avoid locking the connection for other concurrent slots
     const result = await redisClient.zPopMin(redisKey)
     
-    // Safety check: if the worker was stopped while waiting for Redis, bail out immediately
-    if (!this.isRunning && !runningInstances.get(workerId)) return
+    // Safety check: if the worker was stopped or crashed, bail out immediately
+    if (!runningInstances.get(workerId)) return
 
     if (!result) {
       // Small sleep to avoid tight loop on empty queue
@@ -320,9 +324,9 @@ export const workerService = {
       const processingDelay = Math.floor(Math.random() * 7000) + 3000
       await new Promise(resolve => setTimeout(resolve, processingDelay))
 
-      // Final safety check: don't update registry if we've been crashed during simulation
-      if (!this.isRunning && !runningInstances.get(workerId)) {
-        logger.warn(`Worker ${workerId} was crashed during processing. Aborting registry update.`, 'WORKER')
+      // Final safety check: don't update registry if we've been crashed or stopped during processing
+      if (!runningInstances.get(workerId)) {
+        logger.warn(`Worker ${workerId} was crashed or stopped during processing. Aborting database and registry update.`, 'WORKER')
         return
       }
 
@@ -333,17 +337,40 @@ export const workerService = {
       const finishedAt = new Date()
       const executionTimeMs = finishedAt.getTime() - startedAt.getTime()
 
-      // Mark as complete
-      await query(
-        'UPDATE jobs SET status = \'completed\', completed_at = NOW(), updated_at = NOW() WHERE id = $1',
+      // 1. Update attempt log first to claim the finalization of this specific attempt.
+      // This also clears any crash error if the job finishes successfully.
+      const attemptUpdateResult = await query(
+        `UPDATE job_attempts 
+         SET status = 'completed', 
+             finished_at = $1, 
+             execution_time_ms = $2,
+             error = NULL,
+             stack_trace = NULL
+         WHERE id = $3 AND status = 'processing'`,
+        [finishedAt, executionTimeMs, attemptId]
+      )
+
+      if ((attemptUpdateResult.rowCount ?? 0) === 0) {
+        logger.warn(`Job ${jobId} (Attempt ${attemptId}) completion skipped: attempt is no longer 'processing' (likely recovered by scheduler).`, 'JOB')
+        await workerRegistry.setIdle(workerId, jobId)
+        return
+      }
+
+      // 2. Mark job as complete
+      const jobUpdate = await query(
+        `UPDATE jobs 
+         SET status = 'completed', 
+             completed_at = NOW(), 
+             updated_at = NOW() 
+         WHERE id = $1 AND status = 'processing'`,
         [jobId]
       )
 
-      // Update attempt log
-      await query(
-        'UPDATE job_attempts SET status = \'completed\', finished_at = $1, execution_time_ms = $2 WHERE id = $3',
-        [finishedAt, executionTimeMs, attemptId]
-      )
+      if ((jobUpdate.rowCount ?? 0) === 0) {
+        logger.warn(`Job ${jobId} completion skipped: job no longer processing`, 'JOB')
+        await workerRegistry.setIdle(workerId, jobId)
+        return
+      }
       
       await workerRegistry.incrementProcessed(workerId)
       await workerRegistry.setIdle(workerId, jobId)
@@ -380,7 +407,7 @@ export const workerService = {
       const errorMessage = error.message || 'Unknown error'
 
       if (job) {
-        const canRetry = job.attempts < job.max_attempts
+        const canRetry = (job.attempts < job.max_attempts) && (job.infra_attempts < job.max_infra_attempts)
         const newStatus = canRetry ? 'pending' : 'failed'
 
         let nextRunAt: Date | null = null
@@ -388,35 +415,49 @@ export const workerService = {
           const delay = this.calculateBackoff(job.attempts)
           nextRunAt = new Date(Date.now() + delay)
           logger.info(`Job ${jobId} failed - RETRYING in ${delay / 1000}s (at ${nextRunAt.toISOString()})`, 'JOB')
-
-          // Add to Redis delayed queue
-          await queueService.enqueueDelayedJob(queueName, jobId, job.priority, nextRunAt.getTime())
         }
 
-        // Update job status in DB
-        await query(
+        // 1. Update attempt log first, ensuring it is still 'processing'
+        if (attemptId) {
+          const attemptUpdateResult = await query(
+            `UPDATE job_attempts 
+             SET status = 'failed', 
+                 error = $1, 
+                 stack_trace = $2, 
+                 finished_at = $3, 
+                 execution_time_ms = $4
+             WHERE id = $5 AND status = 'processing'`,
+            [errorMessage, error.stack || null, finishedAt, executionTimeMs, attemptId]
+          )
+
+          if ((attemptUpdateResult.rowCount ?? 0) === 0) {
+            logger.warn(`Job ${jobId} (Attempt ${attemptId}) failure update skipped: attempt is no longer 'processing' (likely recovered by scheduler).`, 'JOB')
+            await workerRegistry.setIdle(workerId, jobId)
+            return
+          }
+        }
+
+        // 2. Update job status in DB ONLY if it is still processing
+        const jobUpdate = await query(
           `UPDATE jobs 
            SET status = $1, 
                last_error = $2, 
                updated_at = NOW(), 
                failed_at = $3,
                run_at = COALESCE($4, run_at)
-           WHERE id = $5`,
+           WHERE id = $5 AND status = 'processing'`,
           [newStatus, errorMessage, canRetry ? null : new Date(), nextRunAt, jobId]
         )
 
-        // Update attempt log
-        if (attemptId) {
-          await query(
-            `UPDATE job_attempts 
-             SET status = 'failed', 
-                 error = $1, 
-                 stack_trace = $2, 
-                 finished_at = $3,
-                 execution_time_ms = $4
-             WHERE id = $5`,
-            [errorMessage, error.stack || null, finishedAt, executionTimeMs, attemptId]
-          )
+        if ((jobUpdate.rowCount ?? 0) === 0) {
+          logger.warn(`Job ${jobId} failure processing skipped: job no longer processing`, 'JOB')
+          await workerRegistry.setIdle(workerId, jobId)
+          return
+        }
+
+        if (canRetry && nextRunAt) {
+          // Add to Redis delayed queue
+          await queueService.enqueueDelayedJob(queueName, jobId, job.priority, nextRunAt.getTime())
         }
 
         if (!canRetry) {
