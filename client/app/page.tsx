@@ -570,7 +570,7 @@ export default function DashboardPage() {
                       </span>
                       {/* Attempt Number */}
                       <span style={{ color: "var(--text-dim)", fontFamily: "monospace" }}>
-                        (Attempt #{att.attempt_number})
+                        (Attempt #{att.business_attempt}{att.infra_attempt > 0 ? `, Infra #${att.infra_attempt}` : ''})
                       </span>
                       {/* Job Type and ID */}
                       <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>

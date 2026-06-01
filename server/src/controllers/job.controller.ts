@@ -166,7 +166,7 @@ export const jobController = {
       const { id } = req.params
       const [jobRes, attemptsRes] = await Promise.all([
         query('SELECT * FROM jobs WHERE id = $1', [id]),
-        query('SELECT * FROM job_attempts WHERE job_id = $1 ORDER BY attempt_number ASC', [id])
+        query('SELECT * FROM job_attempts WHERE job_id = $1 ORDER BY business_attempt ASC, infra_attempt ASC', [id])
       ])
 
       if (jobRes.rows.length === 0) return res.status(404).json({ error: 'Job not found' })
@@ -346,7 +346,8 @@ export const jobController = {
         SELECT 
           ja.id::text,
           ja.job_id::text,
-          ja.attempt_number,
+          ja.business_attempt,
+          ja.infra_attempt,
           ja.status,
           ja.worker_id,
           ja.error,

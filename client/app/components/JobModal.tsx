@@ -243,7 +243,14 @@ export const JobModal = ({
                       icon={<AttemptStatusIcon status={att.status} />}
                       badge={
                         <div className="jm-acc-title">
-                          <span className="jm-acc-attempt">Attempt #{att.attempt_number}</span>
+                          <span className="jm-acc-attempt">
+                            Attempt #{att.business_attempt}
+                            {att.infra_attempt > 0 && (
+                              <span style={{ opacity: 0.7, fontSize: '0.9em', marginLeft: '6px' }}>
+                                (Infra #{att.infra_attempt})
+                              </span>
+                            )}
+                          </span>
                           <StatusBadge status={att.status} />
                           {dur && <span className="jm-acc-dur">{dur}</span>}
                         </div>

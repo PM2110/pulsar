@@ -14,7 +14,7 @@ export const workerRegistry = {
    */
   register: async (workerId: string, queueName: string, autoRestart: boolean = false, force: boolean = false): Promise<void> => {
     const existing = await workerRegistry.get(workerId)
-    
+
     // If it was explicitly stopped, only allow registration if "force" is true (manual start).
     // This prevents "ghost" heartbeats from dying processes from resurrecting the node.
     if (existing?.status === 'stopped' && !force) return
@@ -298,7 +298,7 @@ export const workerRegistry = {
           continue
         }
       }
-      
+
       if (onlyRestarts) continue
 
       // B. If worker hasn't heartbeated in WORKER_TTL seconds
@@ -333,67 +333,94 @@ export const workerRegistry = {
 
       for (const jobId of w.active_job_ids) {
         try {
-          const { query } = await import('../config/db.config.js')
+          const { getClient } = await import('../config/db.config.js')
+          const client = await getClient()
+          try {
+            await client.query('BEGIN')
 
-          // A. First check if this worker has an active 'processing' attempt for this job.
-          // This prevents stale/concurrent workers from recovery races on jobs they aren't processing.
-          const attemptQuery = await query(
-            `SELECT id FROM job_attempts 
-             WHERE job_id = $1 AND worker_id = $2 AND status = 'processing'
-             ORDER BY started_at DESC LIMIT 1`,
-            [jobId, workerId]
-          )
-          if (attemptQuery.rows.length === 0) continue
-
-          const attemptId = attemptQuery.rows[0].id
-
-          // B. Atomically claim the recovery by updating the specific attempt record first.
-          // If the worker has already finished/failed this attempt, the count will be 0 and we skip recovery.
-          const attemptUpdateResult = await query(
-            `UPDATE job_attempts 
-             SET status = 'failed', 
-                 error = 'Worker crashed during execution', 
-                 finished_at = NOW(),
-                 execution_time_ms = EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000
-             WHERE id = $1 AND status = 'processing'`,
-            [attemptId]
-          )
-
-          if ((attemptUpdateResult.rowCount ?? 0) === 0) continue
-
-          // C. Fetch the job details to calculate retry limits
-          const jobQuery = await query(
-            'SELECT attempts, max_attempts, infra_attempts, max_infra_attempts FROM jobs WHERE id = $1 AND status = $2',
-            [jobId, 'processing']
-          )
-          if (jobQuery.rows.length === 0) continue
-
-          const job = jobQuery.rows[0]
-          const nextInfraAttempts = job.infra_attempts + 1
-          const nextAttempts = Math.max(0, job.attempts - 1)
-          const canRetry = (nextAttempts < job.max_attempts) && (nextInfraAttempts < job.max_infra_attempts)
-          const newStatus = canRetry ? 'pending' : 'failed'
-
-          // D. Atomically update job status in DB
-          await query(
-            `UPDATE jobs 
-             SET status = $1, 
-                 attempts = $2,
-                 infra_attempts = $3,
-                 updated_at = NOW(), 
-                 last_error = 'Worker crashed during execution',
-                 run_at = NOW(),
-                 failed_at = $4
-             WHERE id = $5 AND status = 'processing'`,
-            [newStatus, nextAttempts, nextInfraAttempts, canRetry ? null : new Date(), jobId]
-          )
-
-          // E. Re-enqueue in Redis if allowed
-          if (canRetry) {
-            const jobResult = await query('SELECT priority FROM jobs WHERE id = $1', [jobId])
-            if (jobResult.rows.length > 0) {
-              await queueService.enqueueJob(w.queue_name, jobId, jobResult.rows[0].priority)
+            // A. First check if this worker has an active 'processing' attempt for this job.
+            // This prevents stale/concurrent workers from recovery races on jobs they aren't processing.
+            const attemptQuery = await client.query(
+              `SELECT id FROM job_attempts 
+               WHERE job_id = $1 AND worker_id = $2 AND status = 'processing'
+               ORDER BY started_at DESC LIMIT 1
+               FOR UPDATE`,
+              [jobId, workerId]
+            )
+            if (attemptQuery.rows.length === 0) {
+              await client.query('ROLLBACK')
+              continue
             }
+
+            const attemptId = attemptQuery.rows[0].id
+
+            // B. Atomically claim the recovery by updating the specific attempt record first.
+            // If the worker has already finished/failed this attempt, the count will be 0 and we skip recovery.
+            const attemptUpdateResult = await client.query(
+              `UPDATE job_attempts 
+               SET status = 'failed', 
+                   error = 'Worker crashed during execution', 
+                   finished_at = NOW(),
+                   execution_time_ms = EXTRACT(EPOCH FROM (NOW() - started_at)) * 1000
+               WHERE id = $1 AND status = 'processing'`,
+              [attemptId]
+            )
+
+            if ((attemptUpdateResult.rowCount ?? 0) === 0) {
+              await client.query('ROLLBACK')
+              continue
+            }
+
+            // C. Fetch the job details to calculate retry limits
+            const jobQuery = await client.query(
+              'SELECT attempts, max_attempts, infra_attempts, max_infra_attempts FROM jobs WHERE id = $1 AND status = $2 FOR UPDATE',
+              [jobId, 'processing']
+            )
+            if (jobQuery.rows.length === 0) {
+              await client.query('ROLLBACK')
+              continue
+            }
+
+            const job = jobQuery.rows[0]
+            const nextInfraAttempts = job.infra_attempts + 1
+            const nextAttempts = Math.max(0, job.attempts - 1)
+            const canRetry = (nextAttempts < job.max_attempts) && (nextInfraAttempts < job.max_infra_attempts)
+            const newStatus = canRetry ? 'pending' : 'failed'
+
+            // D. Atomically update job status in DB
+            const jobUpdateResult = await client.query(
+              `UPDATE jobs 
+               SET status = $1, 
+                   attempts = $2,
+                   infra_attempts = $3,
+                   updated_at = NOW(), 
+                   last_error = 'Worker crashed during execution',
+                   run_at = NOW(),
+                   failed_at = $4
+               WHERE id = $5 AND status = 'processing'`,
+              [newStatus, nextAttempts, nextInfraAttempts, canRetry ? null : new Date(), jobId]
+            )
+
+            if ((jobUpdateResult.rowCount ?? 0) === 0) {
+              await client.query('ROLLBACK')
+              continue
+            }
+
+            await client.query('COMMIT')
+
+            // E. Re-enqueue in Redis if allowed
+            if (canRetry) {
+              const { query } = await import('../config/db.config.js')
+              const jobResult = await query('SELECT priority FROM jobs WHERE id = $1', [jobId])
+              if (jobResult.rows.length > 0) {
+                await queueService.enqueueJob(w.queue_name, jobId, jobResult.rows[0].priority)
+              }
+            }
+          } catch (err) {
+            await client.query('ROLLBACK')
+            logger.error(`Recovery: Failed to recover job ${jobId}`, err, 'REGISTRY')
+          } finally {
+            client.release()
           }
         } catch (err) {
           logger.error(`Recovery: Failed to recover job ${jobId}`, err, 'REGISTRY')

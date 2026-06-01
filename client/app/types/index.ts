@@ -18,7 +18,8 @@ export interface Job {
 
 export interface JobAttempt {
   id: string;
-  attempt_number: number;
+  business_attempt: number;
+  infra_attempt: number;
   status: string;
   worker_id: string;
   started_at: string;
@@ -31,7 +32,8 @@ export interface JobAttempt {
 export interface EnrichedJobAttempt {
   id: string;
   job_id: string;
-  attempt_number: number;
+  business_attempt: number;
+  infra_attempt: number;
   status: string;
   worker_id: string;
   error: string | null;

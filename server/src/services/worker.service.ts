@@ -1,6 +1,6 @@
 import os from 'os'
 import { redisClient } from '../config/redis.config.js'
-import { query } from '../config/db.config.js'
+import { query, getClient } from '../config/db.config.js'
 import { DEFAULT_QUEUE } from '../config/queue.config.js'
 import { queueService } from './queue.service.js'
 import { workerRegistry } from './worker.registry.js'
@@ -212,9 +212,6 @@ export const workerService = {
     const jobId = result.value
     logger.info(`Picked up job ${jobId} from ${queueName}`, 'WORKER')
 
-    // Track in registry
-    await workerRegistry.setProcessing(workerId, jobId)
-
     let job: any
     let attemptId: string | number | undefined
     const startedAt = new Date()
@@ -265,7 +262,7 @@ export const workerService = {
       redisClient.publish('pulsar:events', JSON.stringify({ type: 'job_update', job_id: jobId, status: 'processing' }))
 
       // Update registry
-      workerRegistry.setProcessing(workerId, jobId)
+      await workerRegistry.setProcessing(workerId, jobId)
 
       // Calculate Latency
       scheduledAt = new Date(job.run_at)
@@ -275,7 +272,8 @@ export const workerService = {
       const attemptResult = await query(
         `INSERT INTO job_attempts (
           job_id, 
-          attempt_number, 
+          business_attempt, 
+          infra_attempt, 
           status, 
           worker_id, 
           started_at, 
@@ -284,8 +282,8 @@ export const workerService = {
           worker_pid,
           queue_latency_ms
         )
-         VALUES ($1, $2, 'processing', $3, $4, $5, $6, $7, $8) RETURNING id`,
-        [jobId, job.attempts, workerId, startedAt, scheduledAt, os.hostname(), process.pid, queueLatencyMs]
+         VALUES ($1, $2, $3, 'processing', $4, $5, $6, $7, $8, $9) RETURNING id`,
+        [jobId, job.attempts, job.infra_attempts, workerId, startedAt, scheduledAt, os.hostname(), process.pid, queueLatencyMs]
       )
       attemptId = attemptResult.rows[0].id
 
@@ -295,7 +293,8 @@ export const workerService = {
         attempt: {
           id: attemptId ? attemptId.toString() : '',
           job_id: jobId.toString(),
-          attempt_number: job.attempts,
+          business_attempt: job.attempts,
+          infra_attempt: job.infra_attempts,
           status: 'processing',
           worker_id: workerId,
           started_at: startedAt.toISOString(),
@@ -337,39 +336,54 @@ export const workerService = {
       const finishedAt = new Date()
       const executionTimeMs = finishedAt.getTime() - startedAt.getTime()
 
-      // 1. Update attempt log first to claim the finalization of this specific attempt.
-      // This also clears any crash error if the job finishes successfully.
-      const attemptUpdateResult = await query(
-        `UPDATE job_attempts 
-         SET status = 'completed', 
-             finished_at = $1, 
-             execution_time_ms = $2,
-             error = NULL,
-             stack_trace = NULL
-         WHERE id = $3 AND status = 'processing'`,
-        [finishedAt, executionTimeMs, attemptId]
-      )
+      // Execute finalization within a single transaction to ensure consistency
+      const client = await getClient()
+      try {
+        await client.query('BEGIN')
 
-      if ((attemptUpdateResult.rowCount ?? 0) === 0) {
-        logger.warn(`Job ${jobId} (Attempt ${attemptId}) completion skipped: attempt is no longer 'processing' (likely recovered by scheduler).`, 'JOB')
-        await workerRegistry.setIdle(workerId, jobId)
-        return
-      }
+        // 1. Update attempt log first to claim the finalization of this specific attempt.
+        // This also clears any crash error if the job finishes successfully.
+        const attemptUpdateResult = await client.query(
+          `UPDATE job_attempts 
+           SET status = 'completed', 
+               finished_at = $1, 
+               execution_time_ms = $2,
+               error = NULL,
+               stack_trace = NULL
+           WHERE id = $3 AND status = 'processing'`,
+          [finishedAt, executionTimeMs, attemptId]
+        )
 
-      // 2. Mark job as complete
-      const jobUpdate = await query(
-        `UPDATE jobs 
-         SET status = 'completed', 
-             completed_at = NOW(), 
-             updated_at = NOW() 
-         WHERE id = $1 AND status = 'processing'`,
-        [jobId]
-      )
+        if ((attemptUpdateResult.rowCount ?? 0) === 0) {
+          await client.query('ROLLBACK')
+          logger.warn(`Job ${jobId} (Attempt ${attemptId}) completion skipped: attempt is no longer 'processing' (likely recovered by scheduler).`, 'JOB')
+          await workerRegistry.setIdle(workerId, jobId)
+          return
+        }
 
-      if ((jobUpdate.rowCount ?? 0) === 0) {
-        logger.warn(`Job ${jobId} completion skipped: job no longer processing`, 'JOB')
-        await workerRegistry.setIdle(workerId, jobId)
-        return
+        // 2. Mark job as complete
+        const jobUpdate = await client.query(
+          `UPDATE jobs 
+           SET status = 'completed', 
+               completed_at = NOW(), 
+               updated_at = NOW() 
+           WHERE id = $1 AND status = 'processing'`,
+          [jobId]
+        )
+
+        if ((jobUpdate.rowCount ?? 0) === 0) {
+          await client.query('ROLLBACK')
+          logger.warn(`Job ${jobId} completion skipped: job no longer processing`, 'JOB')
+          await workerRegistry.setIdle(workerId, jobId)
+          return
+        }
+
+        await client.query('COMMIT')
+      } catch (err) {
+        await client.query('ROLLBACK')
+        throw err
+      } finally {
+        client.release()
       }
       
       await workerRegistry.incrementProcessed(workerId)
@@ -385,7 +399,8 @@ export const workerService = {
         attempt: {
           id: attemptId ? attemptId.toString() : '',
           job_id: jobId.toString(),
-          attempt_number: job.attempts,
+          business_attempt: job.attempts,
+          infra_attempt: job.infra_attempts,
           status: 'completed',
           worker_id: workerId,
           started_at: startedAt.toISOString(),
@@ -417,42 +432,57 @@ export const workerService = {
           logger.info(`Job ${jobId} failed - RETRYING in ${delay / 1000}s (at ${nextRunAt.toISOString()})`, 'JOB')
         }
 
-        // 1. Update attempt log first, ensuring it is still 'processing'
-        if (attemptId) {
-          const attemptUpdateResult = await query(
-            `UPDATE job_attempts 
-             SET status = 'failed', 
-                 error = $1, 
-                 stack_trace = $2, 
-                 finished_at = $3, 
-                 execution_time_ms = $4
+        // Execute finalization within a single transaction to ensure consistency
+        const client = await getClient()
+        try {
+          await client.query('BEGIN')
+
+          // 1. Update attempt log first, ensuring it is still 'processing'
+          if (attemptId) {
+            const attemptUpdateResult = await client.query(
+              `UPDATE job_attempts 
+               SET status = 'failed', 
+                   error = $1, 
+                   stack_trace = $2, 
+                   finished_at = $3, 
+                   execution_time_ms = $4
+               WHERE id = $5 AND status = 'processing'`,
+              [errorMessage, error.stack || null, finishedAt, executionTimeMs, attemptId]
+            )
+
+            if ((attemptUpdateResult.rowCount ?? 0) === 0) {
+              await client.query('ROLLBACK')
+              logger.warn(`Job ${jobId} (Attempt ${attemptId}) failure update skipped: attempt is no longer 'processing' (likely recovered by scheduler).`, 'JOB')
+              await workerRegistry.setIdle(workerId, jobId)
+              return
+            }
+          }
+
+          // 2. Update job status in DB ONLY if it is still processing
+          const jobUpdate = await client.query(
+            `UPDATE jobs 
+             SET status = $1, 
+                 last_error = $2, 
+                 updated_at = NOW(), 
+                 failed_at = $3,
+                 run_at = COALESCE($4, run_at)
              WHERE id = $5 AND status = 'processing'`,
-            [errorMessage, error.stack || null, finishedAt, executionTimeMs, attemptId]
+            [newStatus, errorMessage, canRetry ? null : new Date(), nextRunAt, jobId]
           )
 
-          if ((attemptUpdateResult.rowCount ?? 0) === 0) {
-            logger.warn(`Job ${jobId} (Attempt ${attemptId}) failure update skipped: attempt is no longer 'processing' (likely recovered by scheduler).`, 'JOB')
+          if ((jobUpdate.rowCount ?? 0) === 0) {
+            await client.query('ROLLBACK')
+            logger.warn(`Job ${jobId} failure processing skipped: job no longer processing`, 'JOB')
             await workerRegistry.setIdle(workerId, jobId)
             return
           }
-        }
 
-        // 2. Update job status in DB ONLY if it is still processing
-        const jobUpdate = await query(
-          `UPDATE jobs 
-           SET status = $1, 
-               last_error = $2, 
-               updated_at = NOW(), 
-               failed_at = $3,
-               run_at = COALESCE($4, run_at)
-           WHERE id = $5 AND status = 'processing'`,
-          [newStatus, errorMessage, canRetry ? null : new Date(), nextRunAt, jobId]
-        )
-
-        if ((jobUpdate.rowCount ?? 0) === 0) {
-          logger.warn(`Job ${jobId} failure processing skipped: job no longer processing`, 'JOB')
-          await workerRegistry.setIdle(workerId, jobId)
-          return
+          await client.query('COMMIT')
+        } catch (err) {
+          await client.query('ROLLBACK')
+          throw err
+        } finally {
+          client.release()
         }
 
         if (canRetry && nextRunAt) {
@@ -461,7 +491,6 @@ export const workerService = {
         }
 
         if (!canRetry) {
-          workerRegistry.incrementFailed(workerId)
           logger.error(`Job ${jobId} failed permanently after ${job.attempts} attempts`, null, 'JOB')
         }
 
@@ -475,7 +504,8 @@ export const workerService = {
             attempt: {
               id: attemptId.toString(),
               job_id: jobId.toString(),
-              attempt_number: job.attempts,
+              business_attempt: job.attempts,
+              infra_attempt: job.infra_attempts,
               status: 'failed',
               error: errorMessage,
               stack_trace: error.stack || null,

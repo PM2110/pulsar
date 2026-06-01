@@ -35,7 +35,8 @@ erDiagram
     JOB_ATTEMPT {
         bigint id PK
         bigint job_id FK
-        int attempt_number
+        int business_attempt
+        int infra_attempt
         string status "completed | failed"
         text error
         int execution_time_ms
@@ -78,6 +79,8 @@ Detailed execution logs for every attempt.
 | :--- | :--- | :--- |
 | `id` | `BIGSERIAL` | Unique Attempt ID |
 | `job_id` | `BIGINT` | Link to the parent Job |
+| `business_attempt` | `INT` | The business attempt number of the job at the start of this execution |
+| `infra_attempt` | `INT` | The infrastructure attempt number (crashes) at the start of this execution |
 | `status` | `VARCHAR` | Result of the attempt |
 | `error` | `TEXT` | Stack trace or error message if failed |
 | `execution_time_ms`| `INT` | Latency of the business logic |
