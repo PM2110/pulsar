@@ -1,4 +1,4 @@
-# 🌀 Pulsar Job Engine
+# Pulsar Job Engine
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
@@ -9,18 +9,18 @@ Pulsar is a **high-performance, reliable background job engine** built for moder
 
 ---
 
-## ✨ Key Features
+## Key Features
 
-- 🛡️ **Guaranteed Atomicity**: Uses the Transactional Outbox Pattern to synchronize PostgreSQL updates with Redis enqueues.
-- ⚡ **High Performance**: Leverages Redis Sorted Sets for sub-millisecond priority-based job retrieval.
-- 📈 **Dynamic Autoscaling**: Automatically scales worker concurrency based on real-time queue depth.
-- 📊 **Real-time Dashboard**: A beautiful Next.js-based monitoring interface with live WebSocket updates.
-- 🔄 **Exponential Backoff**: Built-in retry logic with configurable backoff strategies.
-- 🛠️ **Developer Friendly**: Fully typed with TypeScript, extensive documentation, and easy Docker-based setup.
+- **Guaranteed Atomicity**: Uses the Transactional Outbox Pattern to synchronize PostgreSQL updates with Redis enqueues.
+- **High Performance**: Leverages Redis Sorted Sets for sub-millisecond priority-based job retrieval.
+- **Dynamic Autoscaling**: Automatically scales worker concurrency based on real-time queue depth.
+- **Real-time Dashboard**: A beautiful Next.js-based monitoring interface with live WebSocket updates.
+- **Exponential Backoff**: Built-in retry logic with configurable backoff strategies.
+- **Developer Friendly**: Fully typed with TypeScript, extensive documentation, and easy Docker-based setup.
 
 ---
 
-## 🏗️ Architecture at a Glance
+## Architecture at a Glance
 
 Pulsar splits responsibilities across three main layers:
 
@@ -41,7 +41,7 @@ graph LR
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 The fastest way to get Pulsar running is using Docker Compose:
 
@@ -54,25 +54,33 @@ cd pulsar
 docker compose up -d --build
 ```
 
-- 🖥️ **Dashboard**: [http://localhost:3001](http://localhost:3001)
-- 🔌 **API Server**: [http://localhost:3000](http://localhost:3000)
+- **Dashboard**: [http://localhost:3001](http://localhost:3001)
+- **API Server**: [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## 📖 Detailed Documentation
+## Detailed Documentation
 
 | Guide | Description |
 | :--- | :--- |
-| 🏗️ **[Architecture](docs/architecture.md)** | Deep dive into system design and core patterns. |
-| ⚙️ **[Worker System](docs/worker-system.md)** | Detailed look at polling, priority, and scaling. |
-| 🛡️ **[Outbox Pattern](docs/outbox-pattern.md)** | Technical breakdown of how we ensure atomicity. |
-| 🔌 **[API Reference](docs/api-reference.md)** | Comprehensive list of REST endpoints and payloads. |
-| 💾 **[Database Schema](docs/database-schema.md)** | PostgreSQL table definitions and indexing logic. |
-| 🛠️ **[Development Guide](docs/development-guide.md)** | Local setup, migrations, and testing instructions. |
+| **[Architecture Overview](docs/architecture.md)** | Deep dive into system design and core patterns. |
+| **[Worker System Deep Dive](docs/worker-system.md)** | Detailed look at polling, priority, and scaling. |
+| **[Outbox Pattern](docs/outbox-pattern.md)** | Technical breakdown of how we ensure atomicity. |
+| **[API Reference](docs/api-reference.md)** | Comprehensive list of REST endpoints and payloads. |
+| **[Database Schema](docs/database-schema.md)** | PostgreSQL table definitions and indexing logic. |
+| **[Development Guide](docs/development-guide.md)** | Local setup, migrations, and testing instructions. |
+| **[Business vs. Infrastructure Attempts](docs/business-vs-infra-attempts.md)** | Decoupling business retry budgets from infrastructure failures. |
+| **[Attempt Lifecycle Flow](docs/attempt-lifecycle-flow.md)** | Sequence of database transactions and state transitions. |
+| **[Crash Recovery Mechanism](docs/crash-recovery-mechanism.md)** | Automatic stale worker detection and failover locks. |
+| **[Autoscaling and Concurrency](docs/autoscaling-architecture.md)** | Dynamic concurrency scaling based on queue depth. |
+| **[Worker Lifecycle](docs/worker-lifecycle.md)** | Worker health, bootstrap, heartbeat, and graceful shutdown. |
+| **[Real-time Pub/Sub Pipeline](docs/realtime-pubsub-pipeline.md)** | Redis Pub/Sub, Socket.IO, and UI state synchronization. |
+| **[Concurrency, Locking and Idempotency](docs/concurrency-locking-idempotency.md)** | Job claiming, optimistic/pessimistic locking. |
+| **[Stuck Job Recovery and Reaper](docs/job-reaper-and-stuck-recovery.md)** | Recovery of lost jobs and queue priority aging. |
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Backend**: Node.js, Express, TypeScript, Prisma (ORM)
 - **Frontend**: Next.js 14+, Tailwind CSS, Lucide Icons, Recharts
@@ -81,6 +89,6 @@ docker compose up -d --build
 
 ---
 
-## 📄 License
+## License
 
 Distributed under the MIT License. See `LICENSE` for more information.

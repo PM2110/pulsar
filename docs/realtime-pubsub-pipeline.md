@@ -1,10 +1,10 @@
-# 📡 Real-Time Pub/Sub & Websocket Pipeline
+# Real-Time Pub/Sub and Websocket Pipeline
 
 This document details the real-time event pipeline of Pulsar, explaining how job updates, attempt failures, and performance metrics flow from distributed workers all the way to the frontend React dashboard in real-time.
 
 ---
 
-## 🗺️ Architectural Pipeline
+## Architectural Pipeline
 
 ```
 ┌─────────────────┐       1. Publish Event       ┌────────────────────────┐
@@ -29,7 +29,7 @@ This document details the real-time event pipeline of Pulsar, explaining how job
 
 ---
 
-## 🛠️ Step-by-Step Data Flow
+## Step-by-Step Data Flow
 
 ### Step 1: Event Generation (Workers)
 When a worker starts, completes, or fails a job attempt, it publishes a telemetry payload to the `pulsar:events` Redis channel:
@@ -115,7 +115,7 @@ The frontend client uses `socket.io-client` to listen to these streams.
 
 ---
 
-## ❓ Common Interview Questions & Answers
+## Common Interview Questions and Answers
 
 ### Q: Why not use WebSockets from the worker nodes directly to the clients?
 **A**: Worker nodes run in private subnets, do not expose public endpoints, and scale dynamically. Connecting clients to workers directly would require managing mesh networks, handling massive connection states on process workers, and exposing private infrastructure. The Redis Pub/Sub + API Gateway bridge isolates the workers behind a secure, single-point-of-contact WebSocket server.

@@ -1,10 +1,10 @@
-# ⚙️ Worker Lifecycle & Process Management
+# Worker Lifecycle and Process Management
 
 This document details the life cycle of a Pulsar worker, including health checks, state transitions, graceful shutdown signal handling, and self-healing worker management.
 
 ---
 
-## 🚦 Worker State Machine
+## Worker State Machine
 
 Pulsar workers transition through various states to guarantee job isolation and safe crash recovery. Below is the state machine representation:
 
@@ -21,9 +21,9 @@ stateDiagram-v2
 
 ---
 
-## 🛠️ Step-by-Step Lifecycle Phases
+## Step-by-Step Lifecycle Phases
 
-### 1. Bootstrapping & Registration
+### 1. Bootstrapping and Registration
 When a worker process starts:
 1. It connects to **Redis** and **PostgreSQL**.
 2. Generates a unique `worker_id` combining the static configuration name and the host suffix (e.g., `notifications-worker-4e2b8c9d`).
@@ -53,7 +53,7 @@ When a worker process starts:
 
 ---
 
-### 3. Graceful Shutdown & Signal Handling
+### 3. Graceful Shutdown and Signal Handling
 When a Kubernetes pod/container is evicted, or when a developer restarts the worker, the operating system sends `SIGTERM` or `SIGINT` signals.
 
 Pulsar intercepts these signals to prevent interrupting in-flight jobs:
@@ -79,7 +79,7 @@ process.on('SIGTERM', () => shutdown('SIGTERM'));
 
 ---
 
-### 4. Self-Healing & API-Driven Restarts
+### 4. Self-Healing and API-Driven Restarts
 The dashboard allows administrators to manually stop, restart, or simulate crashes on worker nodes. This is implemented via Redis Pub/Sub control channels:
 
 * **Stop Signal**:
@@ -91,7 +91,7 @@ The dashboard allows administrators to manually stop, restart, or simulate crash
 
 ---
 
-## ❓ Common Interview Questions & Answers
+## Common Interview Questions and Answers
 
 ### Q: Why handle SIGTERM gracefully? Why not let the OS kill the process?
 **A**: If a process is forcefully killed (`SIGKILL`), any jobs currently executing on that process remain marked as `processing` in the database, requiring the stale worker recovery system to clean them up (which takes up to 30 seconds). By handling `SIGTERM`, we can unregister immediately, let active jobs finish, and keep the database clean, achieving zero-downtime deployments.

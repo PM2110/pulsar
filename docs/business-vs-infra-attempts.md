@@ -1,10 +1,10 @@
-# 💼 Understanding Business vs. Infrastructure Attempts
+# Understanding Business vs. Infrastructure Attempts
 
 Pulsar distinguishes between **Business Attempts** (application-level logic) and **Infrastructure Attempts** (worker crashes, node evictions, out-of-memory errors). This document explains the core concepts, the rationale behind this separation, and real-life analogies.
 
 ---
 
-## 🍽️ The Chef's Kitchen Analogy
+## The Chef's Kitchen Analogy
 
 To understand why separating attempts is crucial, consider this real-life scenario:
 
@@ -38,7 +38,7 @@ To understand why separating attempts is crucial, consider this real-life scenar
 
 ---
 
-## ⚙️ Why Split the Attempts?
+## Why Split the Attempts?
 
 Traditional job queues conflate all errors under a single `attempts` counter. In production, this causes two severe issues:
 
@@ -49,23 +49,23 @@ Traditional job queues conflate all errors under a single `attempts` counter. In
 
 ---
 
-## 🗄️ Database Mapping
+## Database Mapping
 
 To support this distinction, Pulsar stores separate counters on both the jobs and the historical attempt logs:
 
-### 1. `jobs` Table
+### 1. jobs Table
 * **`attempts`**: The current number of completed business attempts (incremented when execution starts; decremented if it crashes and is recovered).
 * **`max_attempts`**: Maximum allowed business attempts.
 * **`infra_attempts`**: The current number of infrastructure-level failures (incremented by the recovery scheduler upon worker crash detection).
 * **`max_infra_attempts`**: Maximum allowed infrastructure failures before marking the job as failed.
 
-### 2. `job_attempts` Table
+### 2. job_attempts Table
 * **`business_attempt`**: The active business attempt count when this execution started.
 * **`infra_attempt`**: The active infrastructure attempt count when this execution started.
 
 ---
 
-## 🗺️ State Diagram: How Attempts Progress
+## State Diagram: How Attempts Progress
 
 Below is the state transitions of the two counters through crashes and retries:
 

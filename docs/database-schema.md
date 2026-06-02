@@ -1,8 +1,10 @@
-# 💾 Database Schema
+# Database Schema
 
 Pulsar uses **PostgreSQL** as its primary source of truth. All job states, historical attempts, and outbox entries are persisted here to ensure 100% reliability.
 
-## 🛠️ ORM: Prisma
+---
+
+## ORM: Prisma
 
 The project uses **Prisma** for schema management and type-safe database access. 
 
@@ -11,7 +13,7 @@ The project uses **Prisma** for schema management and type-safe database access.
 
 ---
 
-## 🗺️ Entity Relationship Diagram
+## Entity Relationship Diagram
 
 ```mermaid
 erDiagram
@@ -43,7 +45,7 @@ erDiagram
         string worker_id
         timestamp started_at
     }
-
+ 
     OUTBOX {
         int id PK
         string event_type "job_enqueue"
@@ -55,9 +57,9 @@ erDiagram
 
 ---
 
-## 📂 Table Details
+## Table Details
 
-### 1. `jobs` Table
+### 1. jobs Table
 The central registry for all tasks.
 
 | Column | Type | Nullable | Default | Description |
@@ -72,7 +74,7 @@ The central registry for all tasks.
 | `max_attempts`| `INT` | NO | 5 | Max retries before failure |
 | `run_at` | `TIMESTAMP` | NO | NOW() | Scheduled execution time |
 
-### 2. `job_attempts` Table
+### 2. job_attempts Table
 Detailed execution logs for every attempt.
 
 | Column | Type | Description |
@@ -86,7 +88,7 @@ Detailed execution logs for every attempt.
 | `execution_time_ms`| `INT` | Latency of the business logic |
 | `worker_id` | `VARCHAR` | ID of the worker that processed this |
 
-### 3. `outbox` Table
+### 3. outbox Table
 The reliability bridge between DB and Redis.
 
 | Column | Type | Description |
@@ -98,7 +100,7 @@ The reliability bridge between DB and Redis.
 
 ---
 
-## ⚡ Performance Optimization (Indexes)
+## Performance Optimization (Indexes)
 
 To handle high volumes of jobs, the following indexes are implemented:
 

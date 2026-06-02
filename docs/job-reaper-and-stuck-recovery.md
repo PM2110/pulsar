@@ -1,10 +1,10 @@
-# 🕵️ Stuck Job Recovery & The Reaper Service
+# Stuck Job Recovery and The Reaper Service
 
 This document describes how Pulsar handles job failures and recoveries depending on where a worker crashes, how the **Job Reaper** recovers lost jobs, and how **Priority Aging** prevents low-priority starvation.
 
 ---
 
-## 🌪️ Recovery Scenarios: Where Did the Worker Crash?
+## Recovery Scenarios: Where Did the Worker Crash?
 
 A worker can crash in three distinct execution phases. Pulsar handles each phase differently to prevent duplicate runs or lost jobs:
 
@@ -61,7 +61,7 @@ A worker can crash in three distinct execution phases. Pulsar handles each phase
 
 ---
 
-## 🛠️ The Stale Worker Recovery Flow
+## The Stale Worker Recovery Flow
 
 When recovering a crashed worker's active jobs, Pulsar executes a transaction that reverts attempts and increments infrastructure failure counters:
 
@@ -89,7 +89,7 @@ sequenceDiagram
 
 ---
 
-## ⚖️ Queue Fairness & Priority Aging
+## Queue Fairness and Priority Aging
 
 In priority queues, high-priority jobs can cause **starvation**—a condition where low-priority jobs wait indefinitely because high-priority jobs are continuously enqueued ahead of them.
 
@@ -110,7 +110,7 @@ Pulsar solves this using **Priority Aging**:
 
 ---
 
-## ❓ Common Interview Questions & Answers
+## Common Interview Questions and Answers
 
 ### Q: Why not run the Job Reaper every few seconds?
 **A**: Scanning the database for stale `pending` jobs requires checking timestamps and performing table scans. Running this at a high frequency would overwhelm the database with heavy queries. Since worker crashes during pickup are extremely rare edge cases, a 5-minute interval is a perfect compromise between consistency guarantees and database performance.

@@ -1,10 +1,10 @@
-# 🔄 Lifecycle Flow of an Execution Attempt
+# Lifecycle Flow of an Execution Attempt
 
 This document details the exact sequence of events, database transactions, and state changes that occur during a job's execution cycle. It covers the three main execution paths: **Success**, **Business Failure**, and **Infrastructure Crash**.
 
 ---
 
-## 🗺️ Execution Flow Overview
+## Execution Flow Overview
 
 ```mermaid
 graph TD
@@ -42,7 +42,7 @@ graph TD
 
 ---
 
-## 🏃 Details of the Three Scenarios
+## Details of the Three Scenarios
 
 ### 1. The Success Path
 This is the golden path where the worker successfully executes the job payload without raising any exceptions.

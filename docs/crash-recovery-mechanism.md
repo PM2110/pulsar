@@ -1,10 +1,10 @@
-# 🚨 Crash Detection & Recovery Mechanism
+# Crash Detection and Recovery Mechanism
 
 Pulsar features a fully automated, database-backed **Death Watch** system that monitors worker health, detects crashes, and performs safe, race-free failover of active tasks.
 
 ---
 
-## 📦 The Package Delivery Analogy
+## The Package Delivery Analogy
 
 To understand how the crash recovery system works, consider a real-life package delivery service:
 
@@ -37,7 +37,7 @@ To understand how the crash recovery system works, consider a real-life package 
 
 ---
 
-## 🧭 How Pulsar Detects Crashes
+## How Pulsar Detects Crashes
 
 1. **Redis Registry (`pulsar:workers`)**:
    Every active worker process has a hash entry in Redis containing:
@@ -59,11 +59,11 @@ To understand how the crash recovery system works, consider a real-life package 
 
 ---
 
-## 🛡️ Race-Free Failover (Concurrency Control)
+## Race-Free Failover (Concurrency Control)
 
 In a distributed environment, multiple scheduler nodes might run the recovery check simultaneously. To prevent duplicate recovery runs or recovery races with a worker that is actually running slowly, Pulsar uses **atomic database locks** (`FOR UPDATE`).
 
-### Step-by-Step Sequence:
+### Step-by-Step Sequence
 
 ```mermaid
 sequenceDiagram

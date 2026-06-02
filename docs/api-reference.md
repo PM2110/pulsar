@@ -1,4 +1,4 @@
-# 🔌 API Reference
+# API Reference
 
 The Pulsar API is the central hub for managing jobs and workers. It provides both a RESTful interface for management and a WebSocket interface for real-time telemetry.
 
@@ -6,7 +6,7 @@ The Pulsar API is the central hub for managing jobs and workers. It provides bot
 
 ---
 
-## 🛰️ REST API
+## REST API
 
 ### 1. Job Management
 
@@ -53,7 +53,7 @@ Aggregated metrics for the dashboard.
 
 ---
 
-## ⚡ WebSocket API (Socket.io)
+## WebSocket API (Socket.io)
 
 The dashboard connects via WebSockets to receive real-time updates.
 
@@ -75,7 +75,7 @@ The dashboard connects via WebSockets to receive real-time updates.
 
 ---
 
-## 🛠️ Error Format
+## Error Format
 
 All errors follow a standard RFC-compliant JSON structure:
 
