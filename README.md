@@ -1,6 +1,5 @@
 # Pulsar Job Engine
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Node.js Version](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org/)
 [![PostgreSQL](https://img.shields.io/badge/PostgreSQL-4169E1?style=flat&logo=postgresql&logoColor=white)](https://www.postgresql.org/)
 [![Redis](https://img.shields.io/badge/Redis-DC382D?style=flat&logo=redis&logoColor=white)](https://redis.io/)
@@ -87,8 +86,3 @@ docker compose up -d --build
 - **Infrastructure**: PostgreSQL 15, Redis 7, Docker
 - **Communication**: WebSockets (Socket.io) for real-time telemetry
 
----
-
-## License
-
-Distributed under the MIT License. See `LICENSE` for more information.
