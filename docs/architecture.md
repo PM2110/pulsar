@@ -1,8 +1,10 @@
-# 🏗️ Architecture Overview
+# Architecture Overview
 
 Pulsar is designed with a **decoupled, event-driven architecture** that prioritizes reliability and performance. By separating job submission from execution, Pulsar can handle bursts of traffic without overwhelming backend resources.
 
-## 🌉 The "Bridge" Architecture
+---
+
+## The Bridge Architecture
 
 At its core, Pulsar acts as a reliable bridge between your application's database and a high-performance execution environment.
 
@@ -31,7 +33,7 @@ graph TD
 
 ---
 
-## 🧩 Core Components
+## Core Components
 
 ### 1. API Server (`/server/src/app.ts`)
 The gateway for all interactions. It provides REST endpoints for:
@@ -60,7 +62,7 @@ Monitors the queue length in Redis. If the queue grows beyond a threshold, it si
 
 ---
 
-## 🔄 Data Flow: The Journey of a Job
+## Data Flow: The Journey of a Job
 
 1.  **Submission**: Client sends a POST request to `/api/jobs`.
 2.  **Persistence**: API starts a DB transaction, saves the `Job` record, and adds an `Outbox` entry.
@@ -72,7 +74,7 @@ Monitors the queue length in Redis. If the queue grows beyond a threshold, it si
 
 ---
 
-## 📈 Scalability Strategies
+## Scalability Strategies
 
 - **Vertical**: Increase worker concurrency (threads) within a single container.
 - **Horizontal**: Spin up multiple Worker containers. Each container connects to the same Redis/PostgreSQL.

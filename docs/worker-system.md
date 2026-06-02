@@ -1,8 +1,10 @@
-# ⚙️ Worker System Deep Dive
+# Worker System Deep Dive
 
 The Worker Module is the heartbeat of Pulsar. It is responsible for consuming jobs from Redis, executing business logic, and reporting outcomes back to the database.
 
-## 🧵 Thread Management
+---
+
+## Thread Management
 
 Pulsar workers are designed to be highly concurrent. A single Worker process can manage multiple "Worker Threads" (logical concurrency) to maximize resource utilization.
 
@@ -23,7 +25,7 @@ The number of active threads can be adjusted at runtime by the **Autoscaler**. T
 
 ---
 
-## 🔄 The Job Lifecycle
+## The Job Lifecycle
 
 When a worker thread picks up a job, it enters a strictly defined state machine to ensure no job is lost or stuck.
 
@@ -51,7 +53,7 @@ Each job is executed within a `try-catch` block.
 
 ---
 
-## 📈 Priority & Scoring Logic
+## Priority and Scoring Logic
 
 Pulsar uses a sophisticated scoring system in Redis Sorted Sets to ensure strict priority adherence while preventing "starvation" of lower-priority jobs.
 
@@ -63,7 +65,7 @@ Pulsar uses a sophisticated scoring system in Redis Sorted Sets to ensure strict
 
 ---
 
-## 🛠️ Error Handling & Retries
+## Error Handling and Retries
 
 Pulsar supports **Exponential Backoff** for failed jobs.
 
@@ -79,7 +81,7 @@ When a job exceeds its maximum retry count, it is moved to a `failed` state in t
 
 ---
 
-## 📡 Telemetry & Heartbeats
+## Telemetry and Heartbeats
 
 Each worker instance maintains a heartbeat in Redis.
 - **Registry**: Workers register themselves on startup with their capabilities and ID.

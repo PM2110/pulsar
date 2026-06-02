@@ -1,10 +1,11 @@
-# 📈 Autoscaling & Dynamic Concurrency Architecture
+# Autoscaling and Dynamic Concurrency Architecture
 
 This document describes Pulsar's adaptive autoscaling system, how queue depth dictates concurrency limits, and how workers scale their internal thread-pools (promise workers) dynamically at runtime.
 
 ---
 
-## 🚀 Concept Overview (The Interview Perspective)
+## Concept Overview (The Interview Perspective)
+
 In high-throughput job processors, fixed-concurrency workers fail to optimize resource usage:
 * **Over-provisioning**: Workers sit idle, consuming memory and connection pools when the queue is empty.
 * **Under-provisioning**: During traffic spikes, processing lags because workers process items sequentially.
@@ -13,7 +14,7 @@ Pulsar solves this using an **Autoscaler Service** that monitors queue backlog i
 
 ---
 
-## 🛠️ The Scaling Formula & Math
+## The Scaling Formula and Math
 
 The Autoscaler runs a periodic tick (default: 5 seconds) for each queue and applies the following logic:
 
@@ -28,7 +29,7 @@ The Autoscaler runs a periodic tick (default: 5 seconds) for each queue and appl
 
 ---
 
-## 🔄 Concurrency Propagation Flow
+## Concurrency Propagation Flow
 
 ```mermaid
 graph TD
@@ -54,7 +55,8 @@ graph TD
 
 ---
 
-## 🧵 Thread Pool Simulation in Javascript
+## Thread Pool Simulation in Javascript
+
 Because NodeJS is single-threaded, concurrency is managed using **Logical Threads** (concurrent asynchronous execution blocks via `Promises` and `SetSets`).
 
 ### Dynamic Loop Scaling Mechanism:
@@ -81,7 +83,7 @@ while (runningInstances.get(workerId)) {
 
 ---
 
-## ❓ Common Interview Questions & Answers
+## Common Interview Questions and Answers
 
 ### Q: Why use Redis Pub/Sub instead of workers polling the DB for their settings?
 **A**: Polling database tables is highly expensive and doesn't scale. Redis Pub/Sub provides near-instantaneous broadcast ($O(N)$ subscriber notifications) with minimal CPU and memory overhead, ensuring workers adjust within milliseconds of a traffic surge.

@@ -1,8 +1,10 @@
-# 📊 Pulsar Dashboard
+# Pulsar Dashboard
 
 The Pulsar Dashboard is a real-time, interactive monitoring tool built with **Next.js 14**. It provides a comprehensive view of the entire job engine's health and performance.
 
-## 🚀 Key Features
+---
+
+## Key Features
 
 - **Live Telemetry**: Real-time updates on worker status, queue depth, and job progress via WebSockets.
 - **Job Management**: Create, retry, or cancel jobs directly from the UI.
@@ -12,7 +14,7 @@ The Pulsar Dashboard is a real-time, interactive monitoring tool built with **Ne
 
 ---
 
-## 🎨 Design Philosophy
+## Design Philosophy
 
 The dashboard is designed for high-density information display without overwhelming the user.
 - **Modern UI**: Built with Tailwind CSS and Lucide icons for a clean, professional look.
@@ -21,7 +23,7 @@ The dashboard is designed for high-density information display without overwhelm
 
 ---
 
-## 🔌 Communication (WebSockets)
+## Communication (WebSockets)
 
 The dashboard maintains a persistent connection to the API server using **Socket.io**.
 
@@ -35,7 +37,7 @@ The dashboard maintains a persistent connection to the API server using **Socket
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 - **Framework**: Next.js 14 (App Router)
 - **Styling**: Vanilla CSS + Tailwind CSS
@@ -46,7 +48,7 @@ The dashboard maintains a persistent connection to the API server using **Socket
 
 ---
 
-## 🗺️ Page Structure
+## Page Structure
 
 ### 1. Main Overview (`/`)
 The primary landing page featuring:
@@ -62,7 +64,7 @@ Shows all currently registered worker instances, their current status (Idle/Busy
 
 ---
 
-## 🔧 Local Development
+## Local Development
 
 To run the dashboard independently of the backend (assuming the backend is already running on port 3000):
 

@@ -1,10 +1,11 @@
-# 🔒 Concurrency, Locking & Idempotency
+# Concurrency, Locking and Idempotency
 
 This document details Pulsar's distributed coordination model. It explains how Pulsar prevents duplicate job execution (idempotency) and handles recovery concurrency control using multi-layer locking (Redis pop operations, PostgreSQL state transitions, and row-level locks).
 
 ---
 
-## 🛡️ The Double-Pickup Problem (The Interview Scenario)
+## The Double-Pickup Problem (The Interview Scenario)
+
 In a high-scale distributed environment, two worker processes (or threads) might poll the queue simultaneously. If there is no concurrency control, both workers could fetch the same job, leading to:
 1. **Duplicate Execution**: Sending a notification email or processing a credit card charge twice.
 2. **State Corruption**: Writing conflicting updates to the database.
@@ -13,7 +14,7 @@ Pulsar solves this by combining the **destructiveness of Redis pops** with **ato
 
 ---
 
-## 🔑 Multi-Layer Locking Strategy
+## Multi-Layer Locking Strategy
 
 Pulsar implements a three-tier locking and claim verification strategy:
 
@@ -61,7 +62,7 @@ RETURNING *;
 
 ---
 
-## 🚨 Exclusive Row Locking in Recovery (`FOR UPDATE`)
+## Exclusive Row Locking in Recovery (`FOR UPDATE`)
 
 When a worker crashes, the central Scheduler triggers recovery. If multiple scheduler replicas detect the crash at the same time, they could try to recover the same job. 
 
@@ -89,7 +90,7 @@ sequenceDiagram
     S2->>DB: ROLLBACK (Bails out gracefully)
 ```
 
-### The Lock Mechanism:
+### The Lock Mechanism
 1. **Acquire Row Lock**:
    ```sql
    SELECT id FROM job_attempts 
@@ -109,7 +110,7 @@ sequenceDiagram
 
 ---
 
-## ❓ Common Interview Questions & Answers
+## Common Interview Questions and Answers
 
 ### Q: What is the difference between Optimistic and Pessimistic locking? Where does Pulsar use them?
 **A**: 
