@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ThemeProvider } from "./components/ThemeProvider";
-import { Sidebar } from "./components/Sidebar";
+import { Sidebar } from "./components/layout/Sidebar";
 
 export const metadata: Metadata = {
   title: "Pulsar – Job Engine Dashboard",
@@ -16,13 +16,14 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
           rel="stylesheet"
         />
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.11.0/dist/tabler-icons.min.css" />
         <script dangerouslySetInnerHTML={{ __html: `(function(){try{var t=localStorage.getItem('pulsar-theme')||'dark';document.documentElement.setAttribute('data-theme',t)}catch(e){}})();` }} />
       </head>
       <body>
         <ThemeProvider>
-          <div style={{ display: "flex", minHeight: "100vh" }}>
+          <div className="shell">
             <Sidebar />
-            <main style={{ flex: 1, overflow: "auto", background: "var(--bg-page)" }}>{children}</main>
+            <main className="main-col">{children}</main>
           </div>
         </ThemeProvider>
       </body>

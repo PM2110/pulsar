@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { apiService, socket } from "../lib/api.service";
 import { Job } from "../types";
-import { SortState } from "../components/Table";
+import { SortState } from "../components/ui/Table";
 
 export const useJobs = (limit: number = 10) => {
   const [jobs, setJobs] = useState<Job[]>([]);
