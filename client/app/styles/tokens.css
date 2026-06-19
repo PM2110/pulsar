@@ -81,6 +81,46 @@
   --nav-w: 52px;
   --lane-w: 300px;
   --top-h: 48px;
+
+  /* ─── SEMANTIC → ARCTIC STEEL ALIASES ─── */
+  --bg-root: var(--bg);
+  --bg-page: var(--bg);
+  --bg-sidebar: var(--surf);
+  --bg-card: var(--card2);
+  --bg-card-alt: var(--card3);
+  --bg-inset: var(--card2);
+  --bg-hover: rgba(91, 138, 240, 0.06);
+  --bg-active: rgba(91, 138, 240, 0.10);
+
+  --border: var(--b1);
+  --border-strong: var(--b2);
+  --border-accent: var(--blue);
+
+  --text-primary: var(--t0);
+  --text-secondary: var(--t1);
+  --text-dim: var(--t2);
+  --text-faint: var(--t2);
+
+  --primary: var(--blue);
+  --primary-hover: #4a7ae0;
+  --primary-soft: var(--blue-dim);
+  --primary-muted: var(--blue-ring);
+
+  --success: var(--green);
+  --success-soft: var(--green-dim);
+  --warning: var(--amber);
+  --warning-soft: var(--amber-dim);
+  --danger: var(--red);
+  --danger-soft: var(--red-dim);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.7), 0 4px 10px rgba(0, 0, 0, 0.5);
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 10px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 [data-theme="light"] {

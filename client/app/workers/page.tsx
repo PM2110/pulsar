@@ -8,6 +8,7 @@ import { ScalingConfig } from "../components/workers/ScalingConfig";
 import { WorkerInfo } from "../types";
 import { SearchBar } from "../components/ui/SearchBar";
 import { Tooltip } from "../components/ui/Tooltip";
+import { Slider } from "../components/ui/Slider";
 
 const QUEUES = ["notifications", "media", "default"];
 
@@ -196,18 +197,12 @@ export default function WorkersPage() {
             <div className="rail-card-title">
               <i className="ti ti-bolt"></i>Load Injector
             </div>
-            <div className="slider-row">
-              <label className="field-label" style={{ margin: 0 }}>
-                Job Count
-              </label>
-              <span className="slider-val">{seedForm.count}</span>
-            </div>
-            <input
-              type="range"
-              min="1"
-              max="50"
+            <Slider
+              label="Job Count"
               value={seedForm.count}
-              onChange={(e) => setSeedForm((f) => ({ ...f, count: parseInt(e.target.value) }))}
+              onChange={v => setSeedForm(f => ({ ...f, count: v }))}
+              min={1} max={50}
+              showRange={false}
             />
             <button
               className="btn-full"

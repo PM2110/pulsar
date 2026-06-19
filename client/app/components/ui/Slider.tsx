@@ -28,6 +28,7 @@ export function Slider({
   className,
 }: SliderProps) {
   const displayValue = valueFormatter ? valueFormatter(value) : String(value);
+  const pct = ((value - min) / (max - min)) * 100;
 
   return (
     <div className={`pls-slider-wrap ${className || ""}`}>
@@ -45,6 +46,9 @@ export function Slider({
         step={step}
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
+        style={{
+          background: `linear-gradient(to right, var(--blue) ${pct}%, var(--b2) ${pct}%)`,
+        }}
       />
       {showRange && (
         <div className="pls-slider-range">

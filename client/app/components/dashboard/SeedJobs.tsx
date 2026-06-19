@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { apiService } from "../../lib/api.service";
 import { Dropdown } from "../ui/Dropdown";
+import { Slider } from "../ui/Slider";
 
 export function SeedJobs({ onSeeded }: { onSeeded: () => void }) {
   const [open, setOpen] = useState(true);
@@ -36,13 +37,11 @@ export function SeedJobs({ onSeeded }: { onSeeded: () => void }) {
       </div>
       <div className="ms-body">
         <div className="seed-body">
-          <div className="seed-label-row">Count <strong id="seed-out">{seedForm.count}</strong></div>
-          <input 
-            type="range" 
-            min="1" 
-            max="100" 
-            value={seedForm.count} 
-            onChange={(e) => setSeedForm(f => ({ ...f, count: parseInt(e.target.value) }))}
+          <Slider
+            value={seedForm.count}
+            onChange={v => setSeedForm(f => ({ ...f, count: v }))}
+            min={1} max={100}
+            showRange={false}
           />
           <Dropdown
             options={[
