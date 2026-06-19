@@ -35,6 +35,13 @@ export const workerService = {
     await workerRegistry.register(workerId, queueName)
     logger.info(`Worker started polling queue: ${queueName} with concurrency: 1`, 'WORKER')
 
+    // Recover any jobs from previous crashed instance of this worker ID
+    const existing = await workerRegistry.get(workerId)
+    if (existing && existing.active_job_ids && existing.active_job_ids.length > 0) {
+      logger.warn(`Worker ${workerId} restarting after crash. Recovering ${existing.active_job_ids.length} orphaned jobs.`, 'WORKER')
+      await workerRegistry.recoverWorker(workerId, queueService, existing)
+    }
+
     // Heartbeat to keep registration alive in Redis
     this.singletonHeartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
 
@@ -79,6 +86,13 @@ export const workerService = {
 
     await workerRegistry.register(workerId, queueName)
     logger.info(`Worker instance '${workerId}' started on queue: ${queueName} with concurrency: 1`, 'WORKER')
+
+    // Recover any jobs from previous crashed instance of this worker ID
+    const existing = await workerRegistry.get(workerId)
+    if (existing && existing.active_job_ids && existing.active_job_ids.length > 0) {
+      logger.warn(`Worker ${workerId} restarting after crash. Recovering ${existing.active_job_ids.length} orphaned jobs.`, 'WORKER')
+      await workerRegistry.recoverWorker(workerId, queueService, existing)
+    }
 
     const heartbeat = setInterval(() => workerRegistry.register(workerId, queueName), 10000)
     heartbeats.set(workerId, heartbeat)
