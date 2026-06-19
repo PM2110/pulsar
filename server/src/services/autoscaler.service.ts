@@ -18,9 +18,9 @@ class AutoscalerService {
 
   constructor() {
     // Default configurations for known queues
-    this.config.set('notifications', { enabled: false, minWorkers: 1, maxWorkers: 5, threshold: 5 })
-    this.config.set('media', { enabled: false, minWorkers: 1, maxWorkers: 5, threshold: 5 })
-    this.config.set('default', { enabled: false, minWorkers: 1, maxWorkers: 5, threshold: 5 })
+    this.config.set('notifications', { enabled: true, minWorkers: 1, maxWorkers: 5, threshold: 5 })
+    this.config.set('media', { enabled: true, minWorkers: 1, maxWorkers: 5, threshold: 5 })
+    this.config.set('default', { enabled: true, minWorkers: 1, maxWorkers: 5, threshold: 5 })
   }
 
   getConfig(): Record<string, AutoscalerConfig> {
@@ -66,11 +66,15 @@ class AutoscalerService {
         const activeWorkersForQueue = allWorkers.filter(w => w.queue_name === queueName && w.status !== 'stopped')
         const activeCount = activeWorkersForQueue.length
 
-        if (activeCount === 0) continue
-
         // Separate auto-scaled workers vs manual-scaled workers
         const scalingWorkers = activeWorkersForQueue.filter(w => w.adaptive_scaling)
         const fixedWorkers = activeWorkersForQueue.filter(w => !w.adaptive_scaling)
+
+        // Nothing to scale if no adaptive workers are running
+        if (scalingWorkers.length === 0) {
+          logger.info(`Autoscaler [${queueName}]: Depth=${queueDepth}, ActiveWorkers=${activeCount} (No adaptive workers)`, 'AUTOSCALER')
+          continue
+        }
 
         // Calculate target TOTAL concurrency for the queue
         // e.g. if depth is 20 and threshold is 5, we want 4 slots total.

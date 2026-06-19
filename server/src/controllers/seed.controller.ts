@@ -57,16 +57,42 @@ export const seedController = {
       client = await getClient()
       await client.query('BEGIN')
 
+      // Weighted failure mode slots: 80% success, 20% failure spread
+      // Slot distribution per 10 jobs: 6 succeed, 2 probably_fail (low), 1 fail, 1 probably_fail (high)
+      const FAILURE_MODE_SLOTS = [
+        { mode: 'succeed',      prob: null },           // slot 0
+        { mode: 'succeed',      prob: null },           // slot 1
+        { mode: 'succeed',      prob: null },           // slot 2
+        { mode: 'succeed',      prob: null },           // slot 3
+        { mode: 'succeed',      prob: null },           // slot 4
+        { mode: 'succeed',      prob: null },           // slot 5
+        { mode: 'probably_fail', prob: () => randomBetween(20, 40) / 100 }, // slot 6 (20-40% fail)
+        { mode: 'probably_fail', prob: () => randomBetween(20, 40) / 100 }, // slot 7 (20-40% fail)
+        { mode: 'fail',         prob: null },           // slot 8 (100% fail)
+        { mode: 'probably_fail', prob: () => 0.90 },   // slot 9 (90% fail)
+      ]
+
       for (let i = 0; i < jobCount; i++) {
         const queueName = queue_name || ALL_QUEUES[randomBetween(0, ALL_QUEUES.length - 1)]
         const jobTypes = JOB_TYPES[queueName] || JOB_TYPES.default
         const jobType = jobTypes[randomBetween(0, jobTypes.length - 1)]
         const priority = randomBetween(0, 10)
         const maxAttempts = Math.max(1, randomBetween(1, 5))
-        const failureMode = failure_mode || (['succeed', 'fail', 'probably_fail', 'probably_fail'])[randomBetween(0, 3)]
-        const failProb = failureMode === 'probably_fail'
-          ? (fail_probability !== undefined ? fail_probability : Math.round(Math.random() * 10) / 10)
-          : null
+
+        // If caller overrides failure_mode, honour it; otherwise pick from weighted slots
+        let failureMode: string
+        let failProb: number | null
+
+        if (failure_mode) {
+          failureMode = failure_mode
+          failProb = failureMode === 'probably_fail'
+            ? (fail_probability !== undefined ? fail_probability : Math.round(Math.random() * 10) / 10)
+            : null
+        } else {
+          const slot = FAILURE_MODE_SLOTS[i % FAILURE_MODE_SLOTS.length]
+          failureMode = slot.mode
+          failProb = typeof slot.prob === 'function' ? slot.prob() : slot.prob
+        }
         const payload = randomPayload(jobType)
 
         // 2. Insert the job into the primary 'jobs' table
