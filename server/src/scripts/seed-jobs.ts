@@ -32,18 +32,35 @@ const randomPayload = (jobType: string): object => {
   return payloads[jobType] || { task: jobType, id: randomBetween(1, 1000) }
 }
 
+// Weighted failure mode slots: 80% success, 20% failure spread
+// Per 10 jobs: 6 succeed, 2 probably_fail (20-40%), 1 fail (100%), 1 probably_fail (90%)
+const FAILURE_MODE_SLOTS: Array<{ mode: string; prob: (() => number) | null }> = [
+  { mode: 'succeed',       prob: null },
+  { mode: 'succeed',       prob: null },
+  { mode: 'succeed',       prob: null },
+  { mode: 'succeed',       prob: null },
+  { mode: 'succeed',       prob: null },
+  { mode: 'succeed',       prob: null },
+  { mode: 'probably_fail', prob: () => randomBetween(20, 40) / 100 },
+  { mode: 'probably_fail', prob: () => randomBetween(20, 40) / 100 },
+  { mode: 'fail',          prob: null },
+  { mode: 'probably_fail', prob: () => 0.90 },
+]
+
 const seedJobs = async () => {
   try {
     // Connect to Redis
     await connectRedis()
 
     // Generate 15 random jobs (Reference: job_data.sql patterns)
-    const jobs = Array.from({ length: 15 }).map(() => {
+    const jobs = Array.from({ length: 15 }).map((_, i) => {
       const queueName = ALL_QUEUES[Math.floor(Math.random() * ALL_QUEUES.length)]
       const jobTypes = JOB_TYPES[queueName] || JOB_TYPES.default
       const jobType = jobTypes[Math.floor(Math.random() * jobTypes.length)]
-      const failureMode = (['succeed', 'fail', 'probably_fail', 'probably_fail'])[Math.floor(Math.random() * 4)]
-      
+      const slot = FAILURE_MODE_SLOTS[i % FAILURE_MODE_SLOTS.length]
+      const failureMode = slot.mode
+      const fail_probability = typeof slot.prob === 'function' ? slot.prob() : null
+
       return {
         queue_name: queueName,
         job_type: jobType,
@@ -51,7 +68,7 @@ const seedJobs = async () => {
         priority: Math.floor(Math.random() * 11),
         max_attempts: Math.max(1, Math.floor(Math.random() * 5) + 1),
         failure_mode: failureMode,
-        fail_probability: failureMode === 'probably_fail' ? Math.round(Math.random() * 10) / 10 : null
+        fail_probability
       }
     })
 
@@ -82,7 +99,7 @@ const seedJobs = async () => {
         job.priority,
         job.max_attempts,
         job.failure_mode,
-        job.failure_mode === 'probably_fail' ? (job as any).fail_probability : null
+        job.fail_probability
       ]
 
       const result = await query(insertQuery, values)

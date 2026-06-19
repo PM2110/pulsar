@@ -313,19 +313,24 @@ export default function DashboardPage() {
                           </span>
                           <span className="detail-id">#{selectedJobDetails.job.id.slice(0, 8)}</span>
                           <span className="detail-queue-tag">{selectedJobDetails.job.queue_name}</span>
-                          {selectedJobDetails.attempts.length > 0 && selectedJobDetails.attempts[0].queue_latency_ms != null && (
-                            <span className={`tm-chip ${tmCls(selectedJobDetails.attempts[0].queue_latency_ms, false)}`}>
-                              Q·wait {selectedJobDetails.attempts[0].queue_latency_ms}ms
-                            </span>
-                          )}
-                          {selectedJobDetails.attempts.length > 0 && selectedJobDetails.attempts[0].execution_time_ms != null && (
-                            <span className={`tm-chip ${tmCls(selectedJobDetails.attempts[0].execution_time_ms, true)}`}>
-                              Exec {selectedJobDetails.attempts[0].execution_time_ms}ms
-                            </span>
-                          )}
-                          {selectedJobDetails.job.status === "processing" && selectedJobDetails.attempts[0]?.started_at && (
-                            <span className="tm-chip tm-live">Running {elapsed(selectedJobDetails.attempts[0].started_at)}</span>
-                          )}
+                          {(() => {
+                            const latestAttempt = selectedJobDetails.attempts[selectedJobDetails.attempts.length - 1];
+                            return (<>
+                              {latestAttempt?.queue_latency_ms != null && (
+                                <span className={`tm-chip ${tmCls(latestAttempt.queue_latency_ms, false)}`}>
+                                  Q·wait {latestAttempt.queue_latency_ms}ms
+                                </span>
+                              )}
+                              {latestAttempt?.execution_time_ms != null && (
+                                <span className={`tm-chip ${tmCls(latestAttempt.execution_time_ms, true)}`}>
+                                  Exec {latestAttempt.execution_time_ms}ms
+                                </span>
+                              )}
+                              {selectedJobDetails.job.status === "processing" && latestAttempt?.started_at && (
+                                <span className="tm-chip tm-live">Running {elapsed(latestAttempt.started_at)}</span>
+                              )}
+                            </>);
+                          })()}
                         </div>
                       </div>
                     </div>
@@ -359,43 +364,48 @@ export default function DashboardPage() {
                           </div>
                         </div>
 
-                        <div className="kv-grid-2" style={{ marginTop: 14 }}>
-                          <div className="kv-item"><div className="kv-k">Scheduled</div><div className="kv-v">{formatTimeIST(selectedJobDetails.job.run_at)}</div></div>
-                          <div className="kv-item"><div className="kv-k">Started</div><div className="kv-v">{selectedJobDetails.attempts[0] ? formatTimeIST(selectedJobDetails.attempts[0].started_at) : "—"}</div></div>
-                          <div className="kv-item">
-                            <div className="kv-k">Queue wait</div>
-                            <div className="kv-v">
-                              <span className={selectedJobDetails.attempts[0] ? tmCls(selectedJobDetails.attempts[0].queue_latency_ms, false) : ""}>
-                                {selectedJobDetails.attempts[0] && selectedJobDetails.attempts[0].queue_latency_ms != null ? `${selectedJobDetails.attempts[0].queue_latency_ms}ms` : "—"}
-                              </span>
+                        {(() => {
+                          const latestAttempt = selectedJobDetails.attempts[selectedJobDetails.attempts.length - 1];
+                          return (
+                            <div className="kv-grid-2" style={{ marginTop: 14 }}>
+                              <div className="kv-item"><div className="kv-k">Scheduled</div><div className="kv-v">{latestAttempt ? formatTimeIST(latestAttempt.scheduled_at) : formatTimeIST(selectedJobDetails.job.run_at)}</div></div>
+                              <div className="kv-item"><div className="kv-k">Started</div><div className="kv-v">{latestAttempt ? formatTimeIST(latestAttempt.started_at) : "—"}</div></div>
+                              <div className="kv-item">
+                                <div className="kv-k">Queue wait</div>
+                                <div className="kv-v">
+                                  <span className={latestAttempt ? tmCls(latestAttempt.queue_latency_ms, false) : ""}>
+                                    {latestAttempt?.queue_latency_ms != null ? `${latestAttempt.queue_latency_ms}ms` : "—"}
+                                  </span>
+                                </div>
+                              </div>
+                              <div className="kv-item">
+                                <div className="kv-k">Exec time</div>
+                                <div className="kv-v">
+                                  {latestAttempt?.execution_time_ms != null ? (
+                                    <span className={tmCls(latestAttempt.execution_time_ms, true)}>
+                                      {latestAttempt.execution_time_ms}ms
+                                    </span>
+                                  ) : selectedJobDetails.job.status === "processing" ? (
+                                    <span className="tm-live">running…</span>
+                                  ) : "—"}
+                                </div>
+                              </div>
+                              <div className="kv-item"><div className="kv-k">Worker</div><div className="kv-v">{latestAttempt?.worker_id || "—"}</div></div>
+                              <div className="kv-item">
+                                <div className="kv-k">Host · PID</div>
+                                <div className="kv-v">
+                                  {latestAttempt?.worker_hostname || "—"} · {latestAttempt?.worker_pid || "—"}
+                                </div>
+                              </div>
+                              {selectedJobDetails.job.status === "delayed" && (
+                                <div className="kv-item"><div className="kv-k">Runs</div><div className="kv-v" style={{ color: "var(--amber)" }}>{countdown(selectedJobDetails.job.run_at)}</div></div>
+                              )}
+                              {selectedJobDetails.job.infra_attempts > 0 && (
+                                <div className="kv-item"><div className="kv-k">Infra attempt</div><div className="kv-v">#{selectedJobDetails.job.infra_attempts}</div></div>
+                              )}
                             </div>
-                          </div>
-                          <div className="kv-item">
-                            <div className="kv-k">Exec time</div>
-                            <div className="kv-v">
-                              {selectedJobDetails.attempts[0] && selectedJobDetails.attempts[0].execution_time_ms != null ? (
-                                <span className={tmCls(selectedJobDetails.attempts[0].execution_time_ms, true)}>
-                                  {selectedJobDetails.attempts[0].execution_time_ms}ms
-                                </span>
-                              ) : selectedJobDetails.job.status === "processing" ? (
-                                <span className="tm-live">running…</span>
-                              ) : "—"}
-                            </div>
-                          </div>
-                          <div className="kv-item"><div className="kv-k">Worker</div><div className="kv-v">{selectedJobDetails.attempts[0]?.worker_id || "—"}</div></div>
-                          <div className="kv-item">
-                            <div className="kv-k">Host · PID</div>
-                            <div className="kv-v">
-                              {selectedJobDetails.attempts[0]?.worker_hostname || "—"} · {selectedJobDetails.attempts[0]?.worker_pid || "—"}
-                            </div>
-                          </div>
-                          {selectedJobDetails.job.status === "delayed" && (
-                            <div className="kv-item"><div className="kv-k">Runs</div><div className="kv-v" style={{ color: "var(--amber)" }}>{countdown(selectedJobDetails.job.run_at)}</div></div>
-                          )}
-                          {selectedJobDetails.job.infra_attempts > 0 && (
-                            <div className="kv-item"><div className="kv-k">Infra attempt</div><div className="kv-v">#{selectedJobDetails.job.infra_attempts}</div></div>
-                          )}
-                        </div>
+                          );
+                        })()}
                       </div>
 
                       {/* PAYLOAD PANEL */}
@@ -411,7 +421,7 @@ export default function DashboardPage() {
                             <div className="kv-k" style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: ".09em", color: "var(--red)", marginBottom: 10 }}>Error Message</div>
                             <pre className="err-block">
                               {selectedJobDetails.job.last_error}
-                              {selectedJobDetails.attempts[0]?.stack_trace ? `\n\n${selectedJobDetails.attempts[0].stack_trace}` : ""}
+                              {selectedJobDetails.attempts[selectedJobDetails.attempts.length - 1]?.stack_trace ? `\n\n${selectedJobDetails.attempts[selectedJobDetails.attempts.length - 1].stack_trace}` : ""}
                             </pre>
                           </>
                         ) : (
