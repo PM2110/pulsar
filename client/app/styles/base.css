@@ -9,7 +9,7 @@ html {
 }
 
 body {
-  background: var(--bg-root);
+  background: var(--bg);
   color: var(--text-primary);
   font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   min-height: 100vh;
@@ -31,6 +31,7 @@ h1, h2, h3 { letter-spacing: -.02em; }
 @keyframes pls-fadeIn { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
 @keyframes pls-blink { 0%, 100% { opacity: 1; } 50% { opacity: .3; } }
 @keyframes pls-slideIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .2; } }
 
 /* Utility: mono font */
 .mono { font-family: 'JetBrains Mono', 'Fira Code', monospace; font-size: 12px; }

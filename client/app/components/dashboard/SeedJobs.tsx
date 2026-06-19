@@ -2,6 +2,7 @@
 
 import React, { useState } from "react";
 import { apiService } from "../../lib/api.service";
+import { Dropdown } from "../ui/Dropdown";
 
 export function SeedJobs({ onSeeded }: { onSeeded: () => void }) {
   const [open, setOpen] = useState(true);
@@ -43,29 +44,34 @@ export function SeedJobs({ onSeeded }: { onSeeded: () => void }) {
             value={seedForm.count} 
             onChange={(e) => setSeedForm(f => ({ ...f, count: parseInt(e.target.value) }))}
           />
-          <select 
-            className="seed-sel"
+          <Dropdown
+            options={[
+              { label: "Queue: random", value: "" },
+              { label: "Notifications", value: "notifications" },
+              { label: "Media", value: "media" },
+              { label: "Default", value: "default" },
+            ]}
             value={seedForm.queue_name}
-            onChange={(e) => setSeedForm(f => ({ ...f, queue_name: e.target.value }))}
-          >
-            <option value="">Queue: random</option>
-            <option value="notifications">notifications</option>
-            <option value="media">media</option>
-            <option value="default">default</option>
-          </select>
-          <select 
-            className="seed-sel"
+            onChange={(val) => setSeedForm(f => ({ ...f, queue_name: val }))}
+            multiSelect={false}
+            placeholder="Queue: random"
+            style={{ marginBottom: 8 }}
+          />
+          <Dropdown
+            options={[
+              { label: "Mode: random", value: "" },
+              { label: "Always succeed", value: "succeed" },
+              { label: "Always fail", value: "fail" },
+              { label: "Probabilistic", value: "probably_fail" },
+            ]}
             value={seedForm.failure_mode}
-            onChange={(e) => setSeedForm(f => ({ ...f, failure_mode: e.target.value }))}
-          >
-            <option value="">Mode: random</option>
-            <option value="succeed">Always succeed</option>
-            <option value="fail">Always fail</option>
-            <option value="probably_fail">Probabilistic</option>
-          </select>
+            onChange={(val) => setSeedForm(f => ({ ...f, failure_mode: val }))}
+            multiSelect={false}
+            placeholder="Mode: random"
+            style={{ marginBottom: 8 }}
+          />
           <div className="seed-btns">
-            <button className="seed-btn"><i className="ti ti-settings" style={{ fontSize: 11 }}></i>Configure</button>
-            <button className="seed-btn primary" onClick={handleSeed} disabled={seeding}>
+            <button className="seed-btn primary" style={{ width: "100%" }} onClick={handleSeed} disabled={seeding}>
               <i className="ti ti-bolt" style={{ fontSize: 11 }}></i>{seeding ? "Seeding..." : `Seed ${seedForm.count}`}
             </button>
           </div>

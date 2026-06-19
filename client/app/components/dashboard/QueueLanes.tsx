@@ -50,28 +50,7 @@ export function QueueLanes({ queues, now, selectedJobId, onSelectJob }: QueueLan
     setOpenSubs((prev) => ({ ...prev, [key]: !prev[key] }));
   };
 
-  const getHbBars = (qId: string, colorHex: string) => {
-    // Generate pseudo-random heights based on name
-    const heights = qId === "notifications"
-      ? [3, 5, 4, 8, 6, 9, 7, 5, 8, 10, 9, 8, 6, 7, 9, 11, 8, 10, 7, 6]
-      : qId === "media"
-      ? [2, 4, 6, 5, 3, 7, 8, 6, 5, 4, 6, 9, 10, 8, 7, 6, 5, 7, 8, 9]
-      : [8, 10, 12, 9, 11, 14, 12, 10, 9, 11, 13, 12, 10, 8, 9, 10, 12, 11, 10, 9];
 
-    const mx = Math.max(...heights, 1);
-    return heights.map((v, i) => {
-      const p = v / mx;
-      const h = Math.max(p * 16, 2);
-      const op = 0.25 + p * 0.75;
-      return (
-        <div
-          key={i}
-          className="hb-bar"
-          style={{ height: `${h}px`, background: colorHex, opacity: op }}
-        />
-      );
-    });
-  };
 
   const dl = (runAt: number) => {
     const s = Math.max(0, Math.round((runAt - now) / 1000));
@@ -167,19 +146,20 @@ export function QueueLanes({ queues, now, selectedJobId, onSelectJob }: QueueLan
                 {delItems.length > 0 && <span className="stat-pip pip-amber">{delItems.length}</span>}
               </div>
             </div>
-            
-            <div className="qacc-hb">{getHbBars(q.id, q.colorHex)}</div>
-            
-            <div className="qacc-seg">
-              {pp > 0 && <div className="qacc-seg-fill" style={{ width: `${pp}%`, background: "var(--blue)" }}></div>}
-              {rp > 0 && <div className="qacc-seg-fill" style={{ width: `${rp}%`, background: "var(--b3)" }}></div>}
-              {dp > 0 && <div className="qacc-seg-fill" style={{ width: `${dp}%`, background: "var(--amber)" }}></div>}
-            </div>
-
             <div className="qacc-body">
-              {renderSubSection("processing", "Processing", "#7BA8FF", proc, "processing")}
-              {renderSubSection("ready", "Ready", "var(--b3)", ready, "pending")}
-              {renderSubSection("delayed", "Delayed", "var(--amber)", delItems, "delayed")}
+              {tot === 0 ? (
+                <div className="empty-state" style={{ padding: "40px 10px", textAlign: "center" }}>
+                  <i className="ti ti-mood-empty empty-icon" style={{ fontSize: 24 }}></i>
+                  <div className="empty-label" style={{ fontSize: 11, fontWeight: 500 }}>Queue Idle</div>
+                  <div className="empty-sub" style={{ fontSize: 10 }}>No pending workflow load</div>
+                </div>
+              ) : (
+                <>
+                  {renderSubSection("processing", "Processing", "#7BA8FF", proc, "processing")}
+                  {renderSubSection("ready", "Ready", "var(--b3)", ready, "pending")}
+                  {renderSubSection("delayed", "Delayed", "var(--amber)", delItems, "delayed")}
+                </>
+              )}
             </div>
           </div>
         );

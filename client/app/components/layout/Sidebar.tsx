@@ -21,15 +21,7 @@ export function Sidebar() {
       <Link href="/workers" className={`nav-btn ${pathname === "/workers" ? "active" : ""}`} data-tip="Workers">
         <i className="ti ti-cpu"></i>
       </Link>
-      <div className="nav-btn" data-tip="Analytics"><i className="ti ti-chart-bar"></i></div>
-      
-      <div className="nav-sep"></div>
-      
-      <div className="nav-btn" data-tip="Alerts" style={{ position: "relative" }}>
-        <i className="ti ti-bell"></i>
-        <span className="nav-dot"></span>
-      </div>
-      <div className="nav-btn" data-tip="Seed jobs"><i className="ti ti-bolt"></i></div>
+
       
       <div className="nav-bottom">
         <div className="nav-btn" data-tip="Toggle theme" onClick={toggleTheme}>

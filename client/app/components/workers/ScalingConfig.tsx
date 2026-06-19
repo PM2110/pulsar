@@ -1,8 +1,6 @@
 "use client";
 
 import React from "react";
-import { Accordion, Badge } from "../ui";
-import { BarChartIcon } from "../icons";
 
 interface ScalingConfigProps {
   queues: string[];
@@ -11,31 +9,26 @@ interface ScalingConfigProps {
 
 export function ScalingConfig({ queues, asc }: ScalingConfigProps) {
   return (
-    <Accordion title="Adaptive Scaling" icon={<BarChartIcon />} desc="Autoscaler policy status per queue">
-      <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+    <div className="rail-card" style={{ borderBottom: "none" }}>
+      <div className="rail-card-title">
+        <i className="ti ti-chart-bar"></i>Adaptive Scaling
+      </div>
+      <div style={{ fontSize: "11px", color: "var(--t2)", marginBottom: "12px", marginTop: "-4px" }}>
+        Autoscaler policy status per queue
+      </div>
+      <div>
         {queues.map((q) => {
           const c = asc[q] || { enabled: false };
           return (
-            <div
-              key={q}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "8px 0",
-                opacity: c.enabled ? 1 : 0.4,
-              }}
-            >
-              <span style={{ fontSize: 12, fontFamily: "monospace", color: "var(--text-secondary)" }}>
-                {q}
-              </span>
-              <Badge variant={c.enabled ? "completed" : "pending"} style={{ fontSize: 9 }}>
+            <div key={q} className={`policy-row ${c.enabled ? "" : "off"}`}>
+              <span className="policy-q">{q}</span>
+              <span className={`policy-badge ${c.enabled ? "active" : "inactive"}`}>
                 {c.enabled ? "ACTIVE" : "OFF"}
-              </Badge>
+              </span>
             </div>
           );
         })}
       </div>
-    </Accordion>
+    </div>
   );
 }

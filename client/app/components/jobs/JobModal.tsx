@@ -3,7 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Job, EnrichedJobAttempt } from "../../types";
 import { apiService } from "../../lib/api.service";
-import { StatusBadge, Accordion, Modal, ModalHeader, ModalBody, Button, Spinner, Chip } from "../ui";
+import { StatusBadge, Accordion, Modal, ModalHeader, ModalBody, Button, Spinner, Chip, Tooltip } from "../ui";
 import { formatTime } from "../../lib/utils";
 import { CheckIcon, CloseIcon, AlertCircleIcon, RetryIcon } from "../icons";
 
@@ -53,7 +53,11 @@ function AttemptTrack({ job }: { job: Job }) {
         } else if (done) {
           cls += " pls-jm-track-seg--prev";
         }
-        return <div key={i} className={cls} title={`Attempt ${i + 1}`} />;
+        return (
+          <Tooltip key={i} text={`Attempt ${i + 1}`}>
+            <div className={cls} style={{ height: "100%", width: "100%" }} />
+          </Tooltip>
+        );
       })}
     </div>
   );

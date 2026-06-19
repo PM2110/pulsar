@@ -112,25 +112,32 @@ export const jobController = {
       const params: any[] = []
 
       if (status) {
-        params.push(status)
-        queryText += ` AND status = $${params.length}`
+        params.push(status.split(','))
+        queryText += ` AND status = ANY($${params.length})`
       }
       if (queue_name) {
-        params.push(queue_name)
-        queryText += ` AND queue_name = $${params.length}`
+        params.push(queue_name.split(','))
+        queryText += ` AND queue_name = ANY($${params.length})`
       }
 
       queryText += ` ORDER BY ${sort_by} ${sort_order} LIMIT $${params.length + 1} OFFSET $${params.length + 2}`
 
       let countQueryText = 'SELECT COUNT(*) as total FROM jobs WHERE 1=1'
-      if (status) countQueryText += ` AND status = $1`
-      if (queue_name) countQueryText += ` AND queue_name = $${status ? 2 : 1}`
+      const countParams: any[] = []
+      if (status) {
+        countParams.push(status.split(','))
+        countQueryText += ` AND status = ANY($${countParams.length})`
+      }
+      if (queue_name) {
+        countParams.push(queue_name.split(','))
+        countQueryText += ` AND queue_name = ANY($${countParams.length})`
+      }
 
       params.push(limit, offset)
 
       const [result, countResult] = await Promise.all([
         query(queryText, params),
-        query(countQueryText, params.slice(0, -2))
+        query(countQueryText, countParams)
       ])
 
       const totalRecords = parseInt(countResult.rows[0].total, 10)

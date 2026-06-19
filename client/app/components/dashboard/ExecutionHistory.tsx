@@ -3,6 +3,7 @@
 import React, { useState } from "react";
 import { InfiniteScroll } from "../InfiniteScroll";
 import { formatTimeIST } from "../../lib/utils";
+import { SearchBar } from "../ui/SearchBar";
 
 interface ExecutionHistoryProps {
   attempts: any[];
@@ -21,7 +22,7 @@ export function ExecutionHistory({
   attempts, totalAttempts, feedSearch, setFeedSearch,
   expandedIds, toggleExpand, feedRef, loadMore, hasMore, loadingMore,
 }: ExecutionHistoryProps) {
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false);
 
   return (
     <div className={`ms-section ${!open ? "closed" : ""}`} id="ms-feed">
@@ -31,18 +32,17 @@ export function ExecutionHistory({
       </div>
       <div className="ms-body">
         <div className="feed-search">
-          <i className="ti ti-search feed-search-ico"></i>
-          <input 
-            className="feed-search-inp" 
-            placeholder="Filter…" 
+          <SearchBar
+            placeholder="Search execution feed..."
             value={feedSearch}
-            onChange={(e) => setFeedSearch(e.target.value)}
+            onChange={setFeedSearch}
+            debounceMs={0}
           />
         </div>
         <div className="feed-list" ref={feedRef}>
           {attempts.length === 0 ? (
             <div style={{ textAlign: "center", padding: "30px 0", color: "var(--t2)", fontSize: 11 }}>
-              {feedSearch ? "No matching logs" : "Waiting for jobs..."}
+              {feedSearch ? "No matching logs" : "No execution history found"}
             </div>
           ) : attempts.map((h) => {
             const isExp = !!expandedIds[h.id];

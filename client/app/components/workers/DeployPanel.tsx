@@ -1,9 +1,8 @@
 "use client";
 
 import React, { useState } from "react";
-import { Dropdown, Input, Checkbox, Button } from "../ui";
-import { RocketIcon } from "../icons";
 import { apiService } from "../../lib/api.service";
+import { Dropdown } from "../ui/Dropdown";
 
 interface DeployPanelProps {
   queues: string[];
@@ -25,7 +24,7 @@ export function DeployPanel({ queues, onDeploySuccess }: DeployPanelProps) {
     try {
       const d = await apiService.startWorker(form);
       setMsg({ text: d.message || "Instance started", ok: true });
-      setForm((f) => ({ ...f, worker_id: "" }));
+      setForm((f) => ({ ...f, worker_id: "api-node-0" + (Math.floor(Math.random() * 9) + 1) }));
       setTimeout(onDeploySuccess, 500);
     } catch (e: any) {
       setMsg({ text: e.message || "Failed to start worker", ok: false });
@@ -35,48 +34,53 @@ export function DeployPanel({ queues, onDeploySuccess }: DeployPanelProps) {
   };
 
   return (
-    <div className="pls-card">
-      <div className="pls-card-header">
-        <span className="pls-card-title">Deploy Instance</span>
+    <div className="rail-card">
+      <div className="rail-card-title">
+        <i className="ti ti-rocket"></i>Deploy Instance
       </div>
-      <div className="pls-card-body" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+
+      <div className="field">
+        <label className="field-label">Queue</label>
         <Dropdown
-          label="Queue"
           options={queues.map((q) => ({ label: q, value: q }))}
           value={form.queue_name}
-          onChange={(v) => setForm((f) => ({ ...f, queue_name: v }))}
+          onChange={(val) => setForm((f) => ({ ...f, queue_name: val }))}
+          multiSelect={false}
         />
+      </div>
 
-        <Input
-          label="Worker ID"
+      <div className="field">
+        <label className="field-label">Worker ID</label>
+        <input
+          type="text"
+          className="field-input"
           placeholder="e.g. node-01"
           value={form.worker_id}
           onChange={(e) => setForm((f) => ({ ...f, worker_id: e.target.value }))}
         />
-
-        <Checkbox
-          checked={form.auto_restart}
-          onChange={(checked) => setForm((f) => ({ ...f, auto_restart: checked }))}
-          label="Auto-healing enabled"
-        />
-
-        {msg && (
-          <p style={{ fontSize: 11, color: msg.ok ? "var(--success)" : "var(--danger)" }}>
-            {msg.text}
-          </p>
-        )}
-
-        <Button
-          variant="primary"
-          size="lg"
-          onClick={handleStart}
-          disabled={starting}
-          icon={<RocketIcon size={14} />}
-          style={{ height: 42, width: "100%" }}
-        >
-          {starting ? "Starting..." : "Deploy Node"}
-        </Button>
       </div>
+
+      <div
+        className={`checkbox-row ${form.auto_restart ? "checked" : ""}`}
+        onClick={() => setForm((f) => ({ ...f, auto_restart: !f.auto_restart }))}
+      >
+        <div className="checkbox-box">
+          <i className="ti ti-check" style={{ fontSize: 10 }}></i>
+        </div>
+        <span className="lbl">Auto-healing enabled</span>
+      </div>
+
+      {msg && (
+        <div className={`deploy-msg ${msg.ok ? "ok" : "err"}`}>
+          <i className={msg.ok ? "ti ti-circle-check" : "ti ti-circle-x"}></i>
+          {msg.text}
+        </div>
+      )}
+
+      <button className="btn-full" onClick={handleStart} disabled={starting}>
+        <i className="ti ti-rocket" style={{ fontSize: 13 }}></i>
+        {starting ? "Deploying..." : "Deploy Node"}
+      </button>
     </div>
   );
 }

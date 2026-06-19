@@ -9,6 +9,7 @@ import { OutboxPanel } from "./components/dashboard/OutboxPanel";
 import { QueueLanes } from "./components/dashboard/QueueLanes";
 import { SeedJobs } from "./components/dashboard/SeedJobs";
 import { ExecutionHistory } from "./components/dashboard/ExecutionHistory";
+import { Tooltip } from "./components/ui/Tooltip";
 
 interface Stats {
   jobs: { total: number; pending: number; processing: number; completed: number; failed: number; delayed?: number };
@@ -43,12 +44,7 @@ export default function DashboardPage() {
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [selectedJobDetails, setSelectedJobDetails] = useState<{ job: any; attempts: any[] } | null>(null);
   const [selectedTab, setSelectedTab] = useState<"details" | "payload" | "error">("details");
-  const [contentTab, setContentTab] = useState<"detail" | "log" | "map">("detail");
-
-  // Worker Map State
-  const [workers, setWorkers] = useState<any[]>([]);
-  const [spawnQueue, setSpawnQueue] = useState("default");
-  const [spawnAutoRestart, setSpawnAutoRestart] = useState(true);
+  const [contentTab, setContentTab] = useState<"detail" | "log">("detail");
 
   // Refresh clock
   useEffect(() => {
@@ -62,22 +58,13 @@ export default function DashboardPage() {
     } catch {}
   }, []);
 
-  // Fetch workers
-  const fetchWorkers = useCallback(async () => {
-    try {
-      const res = await apiService.getWorkers();
-      setWorkers(res.workers || []);
-    } catch {}
-  }, []);
-
   useEffect(() => {
     fetchStats();
-    fetchWorkers();
     socket.on("stats_update", setStats);
     return () => {
       socket.off("stats_update");
     };
-  }, [fetchStats, fetchWorkers]);
+  }, [fetchStats]);
 
   // Fetch job details on selection
   useEffect(() => {
@@ -159,59 +146,14 @@ export default function DashboardPage() {
       if (selectedJobId && (data.job_id === selectedJobId || data.attempt?.job_id === selectedJobId)) {
         apiService.getJobDetails(selectedJobId).then(setSelectedJobDetails).catch(() => {});
       }
-
-      // Handle worker update event
-      if (data.type === "worker_update") {
-        fetchWorkers();
-      }
     };
     socket.on("job_update", handleEvent);
     return () => {
       socket.off("job_update", handleEvent);
     };
-  }, [selectedJobId, fetchWorkers]);
+  }, [selectedJobId]);
 
-  // Worker Spawn Action
-  const handleSpawnWorker = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const id = `w-${spawnQueue}-${Math.random().toString(36).substring(2, 6)}`;
-    try {
-      await apiService.startWorker({
-        queue_name: spawnQueue,
-        worker_id: id,
-        auto_restart: spawnAutoRestart,
-      });
-      fetchWorkers();
-    } catch {}
-  };
 
-  const handleStopWorker = async (wId: string) => {
-    try {
-      await apiService.stopWorker(wId);
-      fetchWorkers();
-    } catch {}
-  };
-
-  const handleCrashWorker = async (wId: string) => {
-    try {
-      await apiService.crashWorker(wId);
-      fetchWorkers();
-    } catch {}
-  };
-
-  const handleDeleteWorker = async (wId: string) => {
-    try {
-      await apiService.deleteWorker(wId);
-      fetchWorkers();
-    } catch {}
-  };
-
-  const handleToggleWorkerSetting = async (wId: string, updates: { auto_restart?: boolean; adaptive_scaling?: boolean }) => {
-    try {
-      await apiService.updateWorkerSettings(wId, updates);
-      fetchWorkers();
-    } catch {}
-  };
 
   // Timing helper
   const tmCls = (ms: number | null, isExec: boolean) => {
@@ -262,13 +204,19 @@ export default function DashboardPage() {
         <div className="tb-live"><span className="live-dot"></span>Live</div>
         <div className="topbar-right">
           {(stats?.stuck_jobs_count || 0) > 0 && (
-            <div className="tb-icon warn" title={`${stats!.stuck_jobs_count} stuck jobs`}>
-              <i className="ti ti-alert-triangle"></i>
-              <span className="badge-num">{stats!.stuck_jobs_count}</span>
-            </div>
+            <Tooltip text={`${stats!.stuck_jobs_count} stuck jobs`}>
+              <div className="tb-icon warn">
+                <i className="ti ti-alert-triangle"></i>
+                <span className="badge-num">{stats!.stuck_jobs_count}</span>
+              </div>
+            </Tooltip>
           )}
-          <div className="tb-icon" title="Refresh" onClick={fetchStats}><i className="ti ti-refresh"></i></div>
-          <div className="tb-icon" title="Filter"><i className="ti ti-filter"></i></div>
+          <Tooltip text="Refresh">
+            <div className="tb-icon" onClick={fetchStats}><i className="ti ti-refresh"></i></div>
+          </Tooltip>
+          <Tooltip text="Filter">
+            <div className="tb-icon"><i className="ti ti-filter"></i></div>
+          </Tooltip>
         </div>
       </div>
 
@@ -322,7 +270,6 @@ export default function DashboardPage() {
           <div className="content-top">
             <span className={`content-tab ${contentTab === "detail" ? "on" : ""}`} onClick={() => setContentTab("detail")}>Job Detail</span>
             <span className={`content-tab ${contentTab === "log" ? "on" : ""}`} onClick={() => setContentTab("log")}>Execution Log</span>
-            <span className={`content-tab ${contentTab === "map" ? "on" : ""}`} onClick={() => setContentTab("map")}>Worker Map</span>
           </div>
 
           <div className="detail-panel">
@@ -534,167 +481,14 @@ export default function DashboardPage() {
               </>
             )}
 
-            {contentTab === "map" && (
-              <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-                {/* Spawn Worker Container */}
-                <form className="wm-form" onSubmit={handleSpawnWorker}>
-                  <div className="wm-form-label" style={{ fontSize: 11, color: "var(--t0)", fontWeight: 600 }}>
-                    <i className="ti ti-cpu" style={{ marginRight: 6 }}></i> Spawn a New Worker Node
-                  </div>
-                  <div className="wm-form-row">
-                    <div className="wm-form-group">
-                      <div className="wm-form-label">Target Queue</div>
-                      <select
-                        className="seed-sel"
-                        style={{ marginBottom: 0 }}
-                        value={spawnQueue}
-                        onChange={(e) => setSpawnQueue(e.target.value)}
-                      >
-                        <option value="default">Default</option>
-                        <option value="notifications">Notifications</option>
-                        <option value="media">Media</option>
-                      </select>
-                    </div>
-                    <div className="wm-form-group" style={{ flex: "0 0 auto", paddingBottom: 10 }}>
-                      <div className="wm-setting-row" style={{ gap: 8 }}>
-                        <span className="wm-form-label">Auto-Restart</span>
-                        <label className="wm-switch">
-                          <input
-                            type="checkbox"
-                            checked={spawnAutoRestart}
-                            onChange={(e) => setSpawnAutoRestart(e.target.checked)}
-                          />
-                          <span className="wm-slider"></span>
-                        </label>
-                      </div>
-                    </div>
-                    <button type="submit" className="seed-btn primary" style={{ height: 32, padding: "0 16px" }}>
-                      Spawn Worker
-                    </button>
-                  </div>
-                </form>
-
-                {/* Worker Grid */}
-                <div>
-                  <div className="wm-form-label" style={{ marginBottom: 12, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <span>Active Clusters / Registry ({workers.length} nodes)</span>
-                    <button className="wm-btn" style={{ padding: "3px 8px", width: "auto" }} onClick={fetchWorkers}>
-                      <i className="ti ti-refresh" style={{ fontSize: 10 }}></i> Refresh Grid
-                    </button>
-                  </div>
-
-                  {workers.length === 0 ? (
-                    <div className="empty-state" style={{ padding: "40px 0" }}>
-                      <div className="empty-icon"><i className="ti ti-cpu-off"></i></div>
-                      <div className="empty-label">No registered workers found</div>
-                      <div className="empty-sub">Use the panel above to spawn a new worker.</div>
-                    </div>
-                  ) : (
-                    <div className="wm-grid">
-                      {workers.map((w) => {
-                        const isStale = now - new Date(w.last_activity).getTime() >= 30000;
-                        const status = w.status === "stopped" ? "stopped" : isStale ? "stale" : w.status;
-
-                        return (
-                          <div key={w.worker_id} className="wm-card" style={{ opacity: status === "stopped" ? 0.6 : 1 }}>
-                            <div className="wm-card-head">
-                              <div className="wm-card-title">
-                                <span className="wm-card-id" title={w.worker_id}>
-                                  {w.worker_id.startsWith("api-") ? "API Node" : "Worker"} · {w.worker_id.split("-").pop()}
-                                </span>
-                                <span className="wm-card-queue">{w.queue_name}</span>
-                              </div>
-                              <span className={`wm-status-badge ${
-                                status === "processing" ? "wms-proc" :
-                                status === "idle" ? "wms-idle" : "wms-stop"
-                              }`}>
-                                <span className={`sb-dot ${status === "processing" ? "pulse" : ""}`} style={{
-                                  background: status === "processing" ? "#7BA8FF" :
-                                              status === "idle" ? "#5DD1A0" :
-                                              status === "stale" ? "var(--amber)" : "var(--t3)"
-                                }}></span>
-                                {status}
-                              </span>
-                            </div>
-
-                            <div className="wm-card-metrics">
-                              <div className="wm-metric-item">
-                                <span className="wm-metric-lbl">Processed</span>
-                                <span className="wm-metric-val">{w.jobs_processed}</span>
-                              </div>
-                              <div className="wm-metric-item">
-                                <span className="wm-metric-lbl">Failed</span>
-                                <span className="wm-metric-val" style={w.jobs_failed > 0 ? { color: "var(--red)" } : {}}>{w.jobs_failed}</span>
-                              </div>
-                            </div>
-
-                            <div className="wm-settings">
-                              <div className="wm-setting-row">
-                                <span>Auto Restart</span>
-                                <label className="wm-switch">
-                                  <input
-                                    type="checkbox"
-                                    checked={w.auto_restart}
-                                    onChange={(e) => handleToggleWorkerSetting(w.worker_id, { auto_restart: e.target.checked })}
-                                  />
-                                  <span className="wm-slider"></span>
-                                </label>
-                              </div>
-                              <div className="wm-setting-row">
-                                <span>Adaptive Scaling</span>
-                                <label className="wm-switch">
-                                  <input
-                                    type="checkbox"
-                                    checked={w.adaptive_scaling}
-                                    onChange={(e) => handleToggleWorkerSetting(w.worker_id, { adaptive_scaling: e.target.checked })}
-                                  />
-                                  <span className="wm-slider"></span>
-                                </label>
-                              </div>
-                              <div className="wm-setting-row" style={{ fontSize: 9, color: "var(--t3)", fontFamily: "var(--mono)", marginTop: 4 }}>
-                                Last seen: {elapsed(w.last_activity)} ago
-                              </div>
-                            </div>
-
-                            <div className="wm-actions">
-                              {w.status !== "stopped" ? (
-                                <>
-                                  <button className="wm-btn" onClick={() => handleStopWorker(w.worker_id)}>
-                                    <i className="ti ti-player-pause"></i> Stop
-                                  </button>
-                                  <button className="wm-btn danger" onClick={() => handleCrashWorker(w.worker_id)}>
-                                    <i className="ti ti-activity-heartbeat"></i> Crash
-                                  </button>
-                                </>
-                              ) : (
-                                <>
-                                  <button className="wm-btn" onClick={() => apiService.startWorker({ queue_name: w.queue_name, worker_id: w.worker_id, auto_restart: w.auto_restart }).then(fetchWorkers)}>
-                                    <i className="ti ti-player-play"></i> Start
-                                  </button>
-                                  <button className="wm-btn danger" onClick={() => handleDeleteWorker(w.worker_id)}>
-                                    <i className="ti ti-trash"></i> Delete
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              </div>
-            )}
+            {/* Worker map panel removed */}
           </div>
         </div>
 
         <div className="lanes-panel">
           <div className="lanes-header">
             <span className="lanes-header-label"><i className="ti ti-stack-2"></i>Queue Lanes</span>
-            <div style={{ display: "flex", gap: 5 }}>
-              <div className="tb-icon" style={{ width: 24, height: 24, fontSize: 12 }} title="Expand all"><i className="ti ti-arrows-maximize"></i></div>
-              <div className="tb-icon" style={{ width: 24, height: 24, fontSize: 12 }} title="Collapse all"><i className="ti ti-arrows-minimize"></i></div>
-            </div>
+
           </div>
           <div className="lanes-scroll" id="lanes-scroll">
             <QueueLanes 
@@ -710,20 +504,23 @@ export default function DashboardPage() {
           <DistributionBar total={t} stats={stats} />
           <PerformanceMetrics throughput={stats?.throughput_last_60s ?? 0} stats={stats} />
           <OutboxPanel outbox={stats?.outbox ?? { total: 0, pending: 0, processed: 0, failed: 0 }} />
-          <ExecutionHistory 
-             attempts={attempts}
-             totalAttempts={totalAttempts}
-             feedSearch={feedSearch}
-             setFeedSearch={setFeedSearch}
-             expandedIds={expandedIds}
-             toggleExpand={(id) => setExpandedIds(prev => ({ ...prev, [id]: !prev[id] }))}
-             feedRef={feedRef}
-             loadMore={loadMore}
-             hasMore={hasMore}
-             loadingMore={loadingMore}
-          />
           <SeedJobs onSeeded={fetchStats} />
         </div>
+      </div>
+
+      <div className="execution-feed-row">
+        <ExecutionHistory 
+           attempts={attempts}
+           totalAttempts={totalAttempts}
+           feedSearch={feedSearch}
+           setFeedSearch={setFeedSearch}
+           expandedIds={expandedIds}
+           toggleExpand={(id) => setExpandedIds(prev => ({ ...prev, [id]: !prev[id] }))}
+           feedRef={feedRef}
+           loadMore={loadMore}
+           hasMore={hasMore}
+           loadingMore={loadingMore}
+        />
       </div>
     </>
   );

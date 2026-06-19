@@ -1,22 +1,20 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { apiService, socket } from "../lib/api.service";
-import { Accordion, SearchBar, Slider, Button } from "../components/ui";
-import { PageHeader } from "../components/layout/PageHeader";
-import { Section } from "../components/layout/Section";
 import { WorkerCard } from "../components/workers/WorkerCard";
-import { FleetOverview } from "../components/workers/FleetOverview";
 import { DeployPanel } from "../components/workers/DeployPanel";
 import { ScalingConfig } from "../components/workers/ScalingConfig";
-import { BoltIcon } from "../components/icons";
 import { WorkerInfo } from "../types";
+import { SearchBar } from "../components/ui/SearchBar";
+import { Tooltip } from "../components/ui/Tooltip";
 
 const QUEUES = ["notifications", "media", "default"];
 
 export default function WorkersPage() {
   const [workers, setWorkers] = useState<WorkerInfo[]>([]);
   const [search, setSearch] = useState("");
+  const [view, setView] = useState<"all" | "active" | "inactive">("all");
   const [seedForm, setSeedForm] = useState({ count: 5, queue_name: "", failure_mode: "" });
   const [seeding, setSeeding] = useState(false);
   const [asc, setAsc] = useState<Record<string, any>>({});
@@ -47,118 +45,183 @@ export default function WorkersPage() {
     };
   }, [fetchWorkers]);
 
-  const active = workers.filter(w => w.status !== "stopped" && (now - new Date(w.last_activity).getTime() < 30000));
-  const inactive = workers.filter(w => w.status === "stopped" || (now - new Date(w.last_activity).getTime() >= 30000));
+  const isStale = (w: WorkerInfo) => {
+    return w.status !== "stopped" && (now - new Date(w.last_activity).getTime() > 30000);
+  };
 
-  const filtered = (list: WorkerInfo[]) => search
-    ? list.filter(w => w.worker_id.toLowerCase().includes(search.toLowerCase()) || w.queue_name.toLowerCase().includes(search.toLowerCase()))
-    : list;
+  const active = workers.filter(w => w.status !== "stopped" && !isStale(w));
+  const inactive = workers.filter(w => w.status === "stopped" || isStale(w));
+
+  const match = (w: WorkerInfo) => !search || w.worker_id.toLowerCase().includes(search.toLowerCase()) || w.queue_name.toLowerCase().includes(search.toLowerCase());
+
+  const injectLoadShortcut = async () => {
+    setSeeding(true);
+    try {
+      await apiService.seedJobs({ count: 5 });
+    } catch { }
+    setSeeding(false);
+  };
+
+  const groups = [];
+  if (view === "all" || view === "active") {
+    groups.push({ label: "Active Workers", list: active.filter(match), key: "active" });
+  }
+  if (view === "all" || view === "inactive") {
+    groups.push({ label: "Inactive Workers", list: inactive.filter(match), key: "inactive" });
+  }
 
   return (
-    <div className="pls-page">
-      <PageHeader
-        title="Worker Fleet"
-        subtitle={`${active.length} active · ${inactive.length} inactive · WebSocket connected`}
-      >
-        <div style={{ width: 240 }}>
-          <SearchBar placeholder="Search workers..." value={search} onChange={setSearch} debounceMs={200} />
+    <div className="main-col">
+      {/* TOPBAR */}
+      <div className="topbar">
+        <div className="topbar-title">
+          <span className="eyebrow">Pulsar</span>
+          <span style={{ color: "var(--b2)" }}>·</span>
+          Worker Fleet
         </div>
-        <Button variant="ghost" onClick={fetchWorkers}>Refresh</Button>
-      </PageHeader>
+        <div className="topbar-sep"></div>
+        <div className="tb-pill">v2.0</div>
+        <div className="topbar-sep"></div>
+        <div className="tb-live">
+          <span className="live-dot"></span>WebSocket Live
+        </div>
+        <div className="topbar-right">
+          <Tooltip text="Refresh">
+            <div className="tb-icon" onClick={fetchWorkers}>
+              <i className="ti ti-refresh"></i>
+            </div>
+          </Tooltip>
+        </div>
+      </div>
 
-      {/* Fleet Stats */}
-      <Section label="Fleet Overview">
-        <FleetOverview
-          activeCount={active.length}
-          processedCount={workers.reduce((a, w) => a + w.jobs_processed, 0)}
-          failedCount={workers.reduce((a, w) => a + w.jobs_failed, 0)}
+      {/* METRIC RAIL */}
+      <div className="metric-rail">
+        <div className="mc">
+          <div className="mc-label">
+            <span className="wc-status-dot" style={{ background: "var(--green)" }} />
+            Active Workers
+          </div>
+          <div className="mc-val" style={{ color: "var(--green)" }}>{active.length}</div>
+          <div className="mc-sub">active now</div>
+          <div className="mc-accent" style={{ background: "var(--green)", opacity: 0.5 }}></div>
+        </div>
+        <div className="mc">
+          <div className="mc-label">Jobs Processed</div>
+          <div className="mc-val">{workers.reduce((a, w) => a + w.jobs_processed, 0).toLocaleString()}</div>
+          <div className="mc-sub">completed jobs</div>
+        </div>
+        <div className="mc">
+          <div className="mc-label">System Failures</div>
+          <div className="mc-val" style={{ color: "var(--red)" }}>{workers.reduce((a, w) => a + w.jobs_failed, 0)}</div>
+          <div className="mc-sub">failed attempts</div>
+          <div className="mc-accent" style={{ background: "var(--red)", opacity: 0.35 }}></div>
+        </div>
+        <div className="mc">
+          <div className="mc-label">Inactive Workers</div>
+          <div className="mc-val" style={{ color: "var(--t1)" }}>{inactive.length}</div>
+          <div className="mc-sub">stopped / offline</div>
+        </div>
+      </div>
+
+      {/* CONTROLS */}
+      <div className="controls-section">
+        <SearchBar
+          placeholder="Search worker ID or queue..."
+          value={search}
+          onChange={setSearch}
+          debounceMs={0}
+          style={{ flex: "0 0 280px" }}
         />
-      </Section>
+        <div className="seg-toggle">
+          <div className={`seg-btn ${view === "all" ? "on" : ""}`} onClick={() => setView("all")}>
+            All <span className="cnt">{workers.length}</span>
+          </div>
+          <div className={`seg-btn ${view === "active" ? "on" : ""}`} onClick={() => setView("active")}>
+            Active <span className="cnt">{active.length}</span>
+          </div>
+          <div className={`seg-btn ${view === "inactive" ? "on" : ""}`} onClick={() => setView("inactive")}>
+            Inactive <span className="cnt">{inactive.length}</span>
+          </div>
+        </div>
+        <div style={{ flex: 1 }}></div>
+        <button className="btn-action" onClick={injectLoadShortcut} disabled={seeding}>
+          <i className="ti ti-bolt"></i>{seeding ? "Injecting..." : "Inject Load"}
+        </button>
+      </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 24 }}>
-        <div>
-          {/* Active nodes */}
-          <Section label="Active Nodes">
-            <Accordion
-              title="Active Workers"
-              badge={<span className="pls-acc-badge">{filtered(active).length}</span>}
-              defaultOpen
-            >
-              {filtered(active).length > 0 ? (
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 16 }}>
-                  {filtered(active).map(w => (
-                    <WorkerCard
-                      key={w.worker_id}
-                      w={w}
-                      now={now}
-                      onRefresh={fetchWorkers}
-                      onCrash={id => apiService.crashWorker(id)}
-                      onStop={(id, o) => apiService.stopWorker(id, o)}
-                    />
-                  ))}
+      <div className="body-split">
+        {/* FLEET SCROLL */}
+        <div className="fleet-scroll">
+          {groups.map((g) => {
+            const isEmpty = g.list.length === 0;
+            return (
+              <React.Fragment key={g.key}>
+                <div className="fleet-group-label" style={{ marginTop: g.key === "inactive" ? 22 : 0 }}>
+                  {g.label} <span className="cnt-pill">{g.list.length}</span>
                 </div>
-              ) : (
-                <div style={{
-                  padding: 50, textAlign: "center", border: "2px dashed var(--border)",
-                  borderRadius: "var(--radius)", color: "var(--text-faint)", fontSize: 13
-                }}>
-                  {search ? "No workers match your search" : "No active workers. Deploy from the panel →"}
-                </div>
-              )}
-            </Accordion>
-          </Section>
-
-          {/* Inactive nodes */}
-          {filtered(inactive).length > 0 && (
-            <Section label="Inactive Nodes">
-              <Accordion
-                title="Inactive Workers"
-                badge={<span className="pls-acc-badge">{filtered(inactive).length}</span>}
-              >
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(360px, 1fr))", gap: 16 }}>
-                  {filtered(inactive).map(w => (
-                    <WorkerCard
-                      key={w.worker_id}
-                      w={w}
-                      now={now}
-                      onRefresh={fetchWorkers}
-                      onCrash={id => apiService.crashWorker(id)}
-                      onStop={(id, o) => apiService.stopWorker(id, o)}
-                    />
-                  ))}
-                </div>
-              </Accordion>
-            </Section>
-          )}
+                {isEmpty ? (
+                  <div className="empty-fleet">
+                    <i className={`ti ${g.key === "active" ? "ti-server-off" : "ti-mood-empty"}`}></i>
+                    {search
+                      ? "No workers match your search"
+                      : g.key === "active"
+                        ? "No active workers. Deploy from the panel →"
+                        : "No inactive workers"}
+                  </div>
+                ) : (
+                  <div className="fleet-grid">
+                    {g.list.map((w) => (
+                      <WorkerCard
+                        key={w.worker_id}
+                        w={w}
+                        now={now}
+                        onRefresh={fetchWorkers}
+                        onCrash={id => apiService.crashWorker(id)}
+                        onStop={(id, o) => apiService.stopWorker(id, o)}
+                      />
+                    ))}
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
         </div>
 
-        {/* Control Panel */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* RIGHT CONTROL RAIL */}
+        <div className="control-rail">
           <DeployPanel queues={QUEUES} onDeploySuccess={fetchWorkers} />
 
-          <Accordion title="Load Injector" icon={<BoltIcon />}>
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <Slider
-                label="Job Count"
-                value={seedForm.count}
-                onChange={v => setSeedForm(f => ({ ...f, count: v }))}
-                min={1}
-                max={50}
-              />
-              <Button
-                variant="primary"
-                onClick={async () => {
-                  setSeeding(true);
-                  await apiService.seedJobs(seedForm);
-                  setSeeding(false);
-                }}
-                disabled={seeding}
-                style={{ width: "100%" }}
-              >
-                {seeding ? "Injecting..." : "⚡ Inject Load"}
-              </Button>
+          {/* LOAD INJECTOR */}
+          <div className="rail-card">
+            <div className="rail-card-title">
+              <i className="ti ti-bolt"></i>Load Injector
             </div>
-          </Accordion>
+            <div className="slider-row">
+              <label className="field-label" style={{ margin: 0 }}>
+                Job Count
+              </label>
+              <span className="slider-val">{seedForm.count}</span>
+            </div>
+            <input
+              type="range"
+              min="1"
+              max="50"
+              value={seedForm.count}
+              onChange={(e) => setSeedForm((f) => ({ ...f, count: parseInt(e.target.value) }))}
+            />
+            <button
+              className="btn-full"
+              onClick={async () => {
+                setSeeding(true);
+                await apiService.seedJobs(seedForm);
+                setSeeding(false);
+              }}
+              disabled={seeding}
+            >
+              <i className="ti ti-bolt" style={{ fontSize: 13 }}></i>
+              {seeding ? "Injecting..." : "Inject Load"}
+            </button>
+          </div>
 
           <ScalingConfig queues={QUEUES} asc={asc} />
         </div>
