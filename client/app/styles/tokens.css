@@ -1,0 +1,179 @@
+/* Pulsar Design Tokens — Dark + Light */
+
+:root {
+  --bg-root: #0B0E14;
+  --bg-page: #0F1117;
+  --bg-sidebar: #111318;
+  --bg-card: #1A1D27;
+  --bg-card-alt: #1F2231;
+  --bg-inset: #14161E;
+  --bg-hover: rgba(59, 130, 246, 0.06);
+  --bg-active: rgba(59, 130, 246, 0.10);
+
+  --border: rgba(255, 255, 255, 0.07);
+  --border-strong: rgba(255, 255, 255, 0.12);
+  --border-accent: #3B82F6;
+
+  --text-primary: #F1F5F9;
+  --text-secondary: #CBD5E1;
+  --text-dim: #64748B;
+  --text-faint: #475569;
+
+  --primary: #3B82F6;
+  --primary-hover: #2563EB;
+  --primary-soft: rgba(59, 130, 246, 0.10);
+  --primary-muted: rgba(59, 130, 246, 0.20);
+
+  --secondary: #14B8A6;
+  --secondary-soft: rgba(20, 184, 166, 0.10);
+
+  --success: #34D399;
+  --success-soft: rgba(52, 211, 153, 0.10);
+  --warning: #F59E0B;
+  --warning-soft: rgba(245, 158, 11, 0.10);
+  --danger: #DC2626;
+  --danger-soft: rgba(220, 38, 38, 0.10);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.5), 0 4px 10px rgba(0, 0, 0, 0.4);
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 12px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* ─── ARCTIC STEEL TOKENS ─── */
+  --bg: #08080A;
+  --surf: #0D0D10;
+  --card: #111115;
+  --card2: #161619;
+  --card3: #1B1B1F;
+
+  --b0: #1A1A1F;
+  --b1: #212126;
+  --b2: #2C2C33;
+  --b3: #383840;
+
+  --t0: #EDEDF0;
+  --t1: #868694;
+  --t2: #4A4A56;
+  --t3: #28282F;
+
+  --blue: #5B8AF0;
+  --blue-dim: rgba(91, 138, 240, .09);
+  --blue-ring: rgba(91, 138, 240, .20);
+
+  --green: #39C98A;
+  --green-dim: rgba(57, 201, 138, .08);
+  --green-ring: rgba(57, 201, 138, .18);
+
+  --amber: #D4924A;
+  --amber-dim: rgba(212, 146, 74, .08);
+  --amber-ring: rgba(212, 146, 74, .18);
+
+  --red: #D45A5A;
+  --red-dim: rgba(212, 90, 90, .08);
+  --red-ring: rgba(212, 90, 90, .18);
+
+  --violet: #9B7FE8;
+
+  --nav-w: 52px;
+  --lane-w: 300px;
+  --top-h: 48px;
+
+  /* ─── SEMANTIC → ARCTIC STEEL ALIASES ─── */
+  --bg-root: var(--bg);
+  --bg-page: var(--bg);
+  --bg-sidebar: var(--surf);
+  --bg-card: var(--card2);
+  --bg-card-alt: var(--card3);
+  --bg-inset: var(--card2);
+  --bg-hover: rgba(91, 138, 240, 0.06);
+  --bg-active: rgba(91, 138, 240, 0.10);
+
+  --border: var(--b1);
+  --border-strong: var(--b2);
+  --border-accent: var(--blue);
+
+  --text-primary: var(--t0);
+  --text-secondary: var(--t1);
+  --text-dim: var(--t2);
+  --text-faint: var(--t2);
+
+  --primary: var(--blue);
+  --primary-hover: #4a7ae0;
+  --primary-soft: var(--blue-dim);
+  --primary-muted: var(--blue-ring);
+
+  --success: var(--green);
+  --success-soft: var(--green-dim);
+  --warning: var(--amber);
+  --warning-soft: var(--amber-dim);
+  --danger: var(--red);
+  --danger-soft: var(--red-dim);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 4px 8px rgba(0, 0, 0, 0.5);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.7), 0 4px 10px rgba(0, 0, 0, 0.5);
+
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-lg: 10px;
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+[data-theme="light"] {
+  --bg-root: #FFFFFF;
+  --bg-page: #F8FAFC;
+  --bg-sidebar: #FFFFFF;
+  --bg-card: #FFFFFF;
+  --bg-card-alt: #F8FAFC;
+  --bg-inset: #F1F5F9;
+  --bg-hover: rgba(59, 130, 246, 0.04);
+  --bg-active: rgba(59, 130, 246, 0.08);
+
+  --border: #E2E8F0;
+  --border-strong: #CBD5E1;
+  --border-accent: #3B82F6;
+
+  --text-primary: #0F172A;
+  --text-secondary: #334155;
+  --text-dim: #64748B;
+  --text-faint: #94A3B8;
+
+  --primary: #3B82F6;
+  --primary-hover: #2563EB;
+  --primary-soft: rgba(59, 130, 246, 0.08);
+  --primary-muted: rgba(59, 130, 246, 0.15);
+
+  --secondary: #0D9488;
+  --secondary-soft: rgba(13, 148, 136, 0.08);
+
+  --success: #16A34A;
+  --success-soft: rgba(22, 163, 74, 0.08);
+  --warning: #D97706;
+  --warning-soft: rgba(217, 119, 6, 0.08);
+  --danger: #DC2626;
+  --danger-soft: rgba(220, 38, 38, 0.06);
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.04), 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.04), 0 2px 4px rgba(0, 0, 0, 0.06);
+  --shadow-lg: 0 10px 25px rgba(0, 0, 0, 0.06), 0 4px 10px rgba(0, 0, 0, 0.04);
+}
+
+body.light {
+  --bg: #F3F3F5;
+  --surf: #FFFFFF;
+  --card: #F8F8FA;
+  --card2: #EEEFF3;
+  --card3: #E6E7EC;
+  --b0: #E2E2E8;
+  --b1: #D6D6DE;
+  --b2: #C6C6D0;
+  --b3: #AEAEBB;
+  --t0: #0E0E14;
+  --t1: #4E4E60;
+  --t2: #9090A4;
+  --t3: #CCCCD8;
+}

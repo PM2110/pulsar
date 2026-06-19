@@ -1,0 +1,713 @@
+/* ─── WORKER FLEET PAGE SPECIFIC STYLES ─────────────────── */
+
+.seg-toggle {
+  display: flex;
+  background: var(--card2);
+  border: 1px solid var(--b1);
+  border-radius: 5px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.seg-btn {
+  padding: 5px 11px;
+  font-size: 11.5px;
+  border-radius: 4px;
+  color: var(--t2);
+  cursor: pointer;
+  transition: all .12s;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.seg-btn:hover {
+  color: var(--t1)
+}
+
+.seg-btn.on {
+  background: var(--card3);
+  color: var(--t0);
+}
+
+.seg-btn .cnt {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--t2);
+  background: var(--b0);
+  padding: 0 5px;
+  border-radius: 8px;
+}
+
+.seg-btn.on .cnt {
+  color: var(--t1)
+}
+
+/* ─── FLEET SCROLL & GRID ─── */
+.fleet-scroll {
+  flex: 1;
+  overflow-y: auto;
+  padding: 18px 20px 24px;
+}
+
+.fleet-group-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .09em;
+  color: var(--t2);
+  margin-bottom: 12px;
+}
+
+.fleet-group-label:not(:first-child) {
+  margin-top: 22px;
+}
+
+.fleet-group-label .cnt-pill {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--t1);
+  background: var(--card2);
+  border: 1px solid var(--b1);
+  padding: 1px 7px;
+  border-radius: 10px;
+}
+
+.fleet-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+  gap: 14px;
+}
+
+.empty-fleet {
+  padding: 50px 20px;
+  text-align: center;
+  border: 1.5px dashed var(--b1);
+  border-radius: 10px;
+  color: var(--t2);
+  font-size: 12.5px;
+}
+
+.empty-fleet i {
+  font-size: 26px;
+  color: var(--b2);
+  display: block;
+  margin-bottom: 10px;
+}
+
+/* ─── WORKER CARD ─── */
+.worker-card {
+  background: var(--card);
+  border: 1px solid var(--b1);
+  border-radius: 10px;
+  padding: 16px;
+  position: relative;
+  transition: border-color .15s;
+  overflow: hidden;
+}
+
+.worker-card:hover {
+  border-color: var(--b2)
+}
+
+.worker-card.is-stale {
+  border-color: var(--red-ring);
+  background: linear-gradient(180deg, var(--red-dim), transparent 40%), var(--card);
+}
+
+.wc-indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 3px;
+  height: 100%;
+}
+
+.wc-offline-strip {
+  position: absolute;
+  top: 0;
+  left: 3px;
+  right: 0;
+  text-align: center;
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .07em;
+  padding: 4px 0;
+  background: var(--red-dim);
+  color: var(--red);
+}
+
+.wc-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 14px;
+  padding-left: 6px;
+}
+
+.wc-id-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 7px;
+}
+
+.wc-status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.wc-id {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--t0);
+  letter-spacing: -.01em;
+}
+
+.wc-tags {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.wc-queue-chip {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  background: var(--card2);
+  border: 1px solid var(--b1);
+  color: var(--t1);
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.wc-flag {
+  font-size: 9.5px;
+  font-weight: 700;
+  letter-spacing: .03em;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.wc-flag.f-heal {
+  color: var(--green)
+}
+
+.wc-flag.f-scale {
+  color: var(--blue)
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 500;
+  padding: 3px 8px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.s-idle {
+  background: var(--green-dim);
+  color: #5DD1A0;
+  border: 1px solid var(--green-ring);
+}
+
+.s-processing {
+  background: var(--blue-dim);
+  color: #7BA8FF;
+  border: 1px solid var(--blue-ring);
+}
+
+.s-stopped {
+  background: var(--card3);
+  color: var(--t1);
+  border: 1px solid var(--b2);
+}
+
+.s-offline {
+  background: var(--red-dim);
+  color: #D47070;
+  border: 1px solid var(--red-ring);
+}
+
+/* Stat strip */
+.wc-stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 14px;
+  padding-left: 6px;
+}
+
+.wc-stat {
+  background: var(--card2);
+  border: 1px solid var(--b0);
+  border-radius: 7px;
+  padding: 8px 9px;
+}
+
+.wc-stat-lbl {
+  font-size: 8.5px;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--t2);
+  margin-bottom: 4px;
+}
+
+.wc-stat-val {
+  font-size: 15px;
+  font-weight: 500;
+  letter-spacing: -.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Utilization */
+.wc-util {
+  margin-bottom: 14px;
+  padding-left: 6px;
+}
+
+.wc-util-head {
+  display: flex;
+  justify-content: space-between;
+  font-size: 9.5px;
+  color: var(--t2);
+  margin-bottom: 6px;
+  font-weight: 600;
+  letter-spacing: .04em;
+}
+
+.wc-util-head span:last-child {
+  font-family: var(--mono);
+  color: var(--t1);
+}
+
+.cap-bar {
+  display: flex;
+  gap: 2px;
+  height: 5px;
+}
+
+.cap-seg {
+  flex: 1;
+  border-radius: 2px;
+  background: var(--b0);
+}
+
+.cap-seg.filled {
+  background: var(--blue);
+}
+
+/* Toggles row */
+.wc-toggles {
+  display: flex;
+  gap: 16px;
+  padding-left: 6px;
+  margin-bottom: 14px;
+}
+
+.tgl-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.tgl-switch {
+  width: 28px;
+  height: 16px;
+  border-radius: 9px;
+  background: var(--b1);
+  border: 1px solid var(--b2);
+  position: relative;
+  transition: background .15s, border-color .15s;
+  flex-shrink: 0;
+}
+
+.tgl-switch::after {
+  content: '';
+  position: absolute;
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--t2);
+  top: 1.5px;
+  left: 1.5px;
+  transition: transform .15s, background .15s;
+}
+
+.tgl-row.on .tgl-switch {
+  background: var(--green-dim);
+  border-color: var(--green-ring);
+}
+
+.tgl-row.on .tgl-switch::after {
+  transform: translateX(12px);
+  background: var(--green);
+}
+
+.tgl-row.scale.on .tgl-switch {
+  background: var(--blue-dim);
+  border-color: var(--blue-ring);
+}
+
+.tgl-row.scale.on .tgl-switch::after {
+  background: var(--blue);
+}
+
+.tgl-label {
+  font-size: 11px;
+  color: var(--t1);
+  font-weight: 500;
+}
+
+/* Active jobs */
+.wc-jobs {
+  padding-left: 6px;
+  margin-bottom: 14px;
+}
+
+.wc-jobs-lbl {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--t2);
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  margin-bottom: 7px;
+}
+
+.wc-job-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.wc-job-chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  background: var(--blue-dim);
+  border: 1px solid var(--blue-ring);
+  color: #7BA8FF;
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+/* Card footer */
+.wc-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 13px;
+  border-top: 1px solid var(--b0);
+  padding-left: 6px;
+}
+
+.wc-ago {
+  font-size: 11px;
+  color: var(--t2);
+  cursor: default;
+}
+
+.wc-actions {
+  display: flex;
+  gap: 6px;
+  position: relative;
+}
+
+.btn-pill {
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 6px;
+  background: var(--card2);
+  border: 1px solid var(--b1);
+  color: var(--t1);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
+  font-weight: 500;
+  transition: all .1s;
+  font-family: var(--sans);
+}
+
+.btn-pill:hover {
+  border-color: var(--b2);
+  color: var(--t0);
+}
+
+.btn-pill.danger {
+  color: var(--red);
+  border-color: var(--red-ring);
+  background: var(--red-dim);
+}
+
+.btn-pill.danger:hover {
+  background: rgba(212, 90, 90, .18);
+}
+
+.btn-pill.success {
+  color: var(--green);
+  border-color: var(--green-ring);
+  background: var(--green-dim);
+}
+
+.btn-pill.success:hover {
+  background: rgba(57, 201, 138, .18);
+}
+
+.stop-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  width: 168px;
+  z-index: 100;
+  background: var(--card3);
+  border: 1px solid var(--b2);
+  border-radius: 8px;
+  padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+}
+
+.stop-menu button {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  padding: 8px 10px;
+  font-size: 12px;
+  color: var(--t1);
+  cursor: pointer;
+  border-radius: 5px;
+  font-family: var(--sans);
+  transition: background .1s, color .1s;
+}
+
+.stop-menu button:hover {
+  background: var(--card2);
+  color: var(--t0);
+}
+
+/* ─── RIGHT CONTROL RAIL ─── */
+.control-rail {
+  width: 320px;
+  flex-shrink: 0;
+  border-left: 1px solid var(--b1);
+  background: var(--surf);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.rail-card {
+  background: var(--card);
+  border-bottom: 1px solid var(--b1);
+  padding: 16px;
+}
+
+.rail-card-title {
+  font-size: 9.5px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: .1em;
+  color: var(--t2);
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin-bottom: 14px;
+}
+
+.rail-card-title .ti {
+  font-size: 12px;
+}
+
+.field {
+  margin-bottom: 13px;
+}
+
+.field-label {
+  font-size: 10.5px;
+  color: var(--t2);
+  margin-bottom: 6px;
+  display: block;
+  font-weight: 500;
+}
+
+.field-select,
+.field-input {
+  width: 100%;
+  background: var(--card2);
+  border: 1px solid var(--b1);
+  border-radius: 6px;
+  color: var(--t0);
+  padding: 8px 10px;
+  font-size: 12.5px;
+  outline: none;
+  font-family: var(--sans);
+  transition: border-color .1s;
+}
+
+.field-select {
+  cursor: pointer;
+}
+
+.field-input::placeholder {
+  color: var(--t3)
+}
+
+.field-select:focus,
+.field-input:focus {
+  border-color: var(--blue)
+}
+
+.checkbox-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+  margin-bottom: 14px;
+}
+
+.checkbox-box {
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  border: 1px solid var(--b2);
+  background: var(--card2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all .1s;
+}
+
+.checkbox-row.checked .checkbox-box {
+  background: var(--blue-dim);
+  border-color: var(--blue);
+  color: var(--blue);
+}
+
+.checkbox-row span.lbl {
+  font-size: 12px;
+  color: var(--t1);
+}
+
+.btn-full {
+  width: 100%;
+  height: 40px;
+  border-radius: 7px;
+  background: var(--blue-dim);
+  border: 1px solid var(--blue-ring);
+  color: var(--blue);
+  font-weight: 600;
+  font-size: 12.5px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  transition: all .12s;
+  font-family: var(--sans);
+}
+
+.btn-full:hover {
+  background: rgba(91, 138, 240, .18);
+  color: #fff;
+}
+
+.btn-full:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.deploy-msg {
+  font-size: 11px;
+  margin-bottom: 12px;
+  padding: 7px 10px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.deploy-msg.ok {
+  color: var(--green);
+  background: var(--green-dim);
+  border: 1px solid var(--green-ring);
+}
+
+.deploy-msg.err {
+  color: var(--red);
+  background: var(--red-dim);
+  border: 1px solid var(--red-ring);
+}
+
+/* Slider */
+.slider-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.slider-val {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: var(--t0);
+  font-weight: 500;
+}
+
+/* Scaling policy list */
+.policy-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--b0);
+}
+
+.policy-row:last-child {
+  border-bottom: none;
+}
+
+.policy-row.off {
+  opacity: .45;
+}
+
+.policy-q {
+  font-size: 12px;
+  font-family: var(--mono);
+  color: var(--t1);
+}
+
+.policy-badge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  padding: 2px 7px;
+  border-radius: 4px;
+}
+
+.policy-badge.active {
+  background: var(--green-dim);
+  color: var(--green);
+  border: 1px solid var(--green-ring);
+}
+
+.policy-badge.inactive {
+  background: var(--card3);
+  color: var(--t2);
+  border: 1px solid var(--b1);
+}

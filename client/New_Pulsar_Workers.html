@@ -1,0 +1,1592 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Pulsar · Worker Fleet</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:ital,wght@0,300;0,400;0,500;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.11.0/dist/tabler-icons.min.css">
+  <style>
+    /* ─── RESET ─────────────────────────────────────── */
+    *,
+    *::before,
+    *::after {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0
+    }
+
+    /* ─── TOKENS (shared with Dashboard / Jobs) ─── */
+    :root {
+      --bg: #08080A;
+      --surf: #0D0D10;
+      --card: #111115;
+      --card2: #161619;
+      --card3: #1B1B1F;
+
+      --b0: #1A1A1F;
+      --b1: #212126;
+      --b2: #2C2C33;
+      --b3: #383840;
+
+      --t0: #EDEDF0;
+      --t1: #868694;
+      --t2: #4A4A56;
+      --t3: #28282F;
+
+      --blue: #5B8AF0;
+      --blue-dim: rgba(91, 138, 240, .09);
+      --blue-ring: rgba(91, 138, 240, .20);
+
+      --green: #39C98A;
+      --green-dim: rgba(57, 201, 138, .08);
+      --green-ring: rgba(57, 201, 138, .18);
+
+      --amber: #D4924A;
+      --amber-dim: rgba(212, 146, 74, .08);
+      --amber-ring: rgba(212, 146, 74, .18);
+
+      --red: #D45A5A;
+      --red-dim: rgba(212, 90, 90, .08);
+      --red-ring: rgba(212, 90, 90, .18);
+
+      --violet: #9B7FE8;
+      --violet-dim: rgba(155, 127, 232, .09);
+      --violet-ring: rgba(155, 127, 232, .20);
+
+      --sans: 'Inter', system-ui, sans-serif;
+      --mono: 'JetBrains Mono', monospace;
+
+      --nav-w: 52px;
+      --top-h: 48px;
+      --rail-w: 300px;
+    }
+
+    /* ─── SCROLLBARS ────────────────────────────────── */
+    ::-webkit-scrollbar {
+      width: 3px;
+      height: 3px
+    }
+
+    ::-webkit-scrollbar-track {
+      background: transparent
+    }
+
+    ::-webkit-scrollbar-thumb {
+      background: var(--b2);
+      border-radius: 99px
+    }
+
+    /* ─── BASE ──────────────────────────────────────── */
+    html,
+    body {
+      height: 100%;
+      overflow: hidden
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--t0);
+      font-family: var(--sans);
+      font-size: 13px;
+      -webkit-font-smoothing: antialiased
+    }
+
+    /* ─── SHELL ─────────────────────────────────────── */
+    .shell {
+      display: flex;
+      height: 100vh;
+      overflow: hidden
+    }
+
+    /* ━━━ ICON NAV ━━━ */
+    .icon-nav {
+      width: var(--nav-w);
+      flex-shrink: 0;
+      background: var(--surf);
+      border-right: 1px solid var(--b1);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 14px 0;
+      gap: 4px;
+      z-index: 10;
+    }
+
+    .nav-brand {
+      width: 28px;
+      height: 28px;
+      border-radius: 7px;
+      background: var(--blue-dim);
+      border: 1px solid var(--blue-ring);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--blue);
+      font-size: 14px;
+      margin-bottom: 12px;
+    }
+
+    .nav-sep {
+      width: 24px;
+      height: 1px;
+      background: var(--b1);
+      margin: 6px 0
+    }
+
+    .nav-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--t2);
+      font-size: 16px;
+      cursor: pointer;
+      border: 1px solid transparent;
+      transition: all .15s;
+      position: relative;
+    }
+
+    .nav-btn:hover {
+      background: var(--card);
+      color: var(--t1);
+      border-color: var(--b1)
+    }
+
+    .nav-btn.active {
+      background: var(--card2);
+      color: var(--blue);
+      border-color: var(--blue-ring)
+    }
+
+    .nav-bottom {
+      margin-top: auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px
+    }
+
+    .nav-btn[data-tip]:hover::after {
+      content: attr(data-tip);
+      position: absolute;
+      left: calc(100% + 10px);
+      top: 50%;
+      transform: translateY(-50%);
+      background: var(--card3);
+      border: 1px solid var(--b2);
+      color: var(--t0);
+      font-size: 11px;
+      white-space: nowrap;
+      padding: 5px 9px;
+      border-radius: 5px;
+      pointer-events: none;
+      z-index: 999;
+      font-family: var(--sans);
+      font-weight: 400;
+    }
+
+    /* ━━━ MAIN COLUMN ━━━ */
+    .main-col {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      overflow: hidden
+    }
+
+    /* TOPBAR */
+    .topbar {
+      height: var(--top-h);
+      flex-shrink: 0;
+      background: var(--surf);
+      border-bottom: 1px solid var(--b1);
+      display: flex;
+      align-items: center;
+      padding: 0 20px;
+    }
+
+    .topbar-title {
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: -.01em;
+      color: var(--t0);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .topbar-title .eyebrow {
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--t2);
+    }
+
+    .topbar-sep {
+      width: 1px;
+      height: 18px;
+      background: var(--b1);
+      margin: 0 16px
+    }
+
+    .tb-pill {
+      font-size: 10.5px;
+      font-family: var(--mono);
+      padding: 3px 9px;
+      border-radius: 4px;
+      background: var(--card2);
+      border: 1px solid var(--b1);
+      color: var(--t1);
+    }
+
+    .tb-live {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 10.5px;
+      color: var(--green);
+      font-family: var(--mono);
+    }
+
+    .live-dot {
+      width: 5px;
+      height: 5px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: blink 2.4s ease infinite
+    }
+
+    @keyframes blink {
+
+      0%,
+      100% {
+        opacity: 1
+      }
+
+      50% {
+        opacity: .2
+      }
+    }
+
+    .topbar-right {
+      margin-left: auto;
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .tb-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--card2);
+      border: 1px solid var(--b1);
+      color: var(--t2);
+      font-size: 14px;
+      cursor: pointer;
+      transition: all .12s;
+    }
+
+    .tb-icon:hover {
+      color: var(--t0);
+      border-color: var(--b2)
+    }
+
+    /* ━━━ METRIC RAIL ━━━ */
+    .metric-rail {
+      flex-shrink: 0;
+      border-bottom: 1px solid var(--b1);
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      background: var(--surf);
+    }
+
+    .mc {
+      padding: 16px 20px 14px;
+      border-right: 1px solid var(--b0);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .mc:last-child {
+      border-right: none
+    }
+
+    .mc-label {
+      font-size: 9.5px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--t2);
+      margin-bottom: 10px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .mc-val {
+      font-size: 26px;
+      font-weight: 300;
+      line-height: 1;
+      letter-spacing: -.04em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .mc-sub {
+      font-size: 10.5px;
+      color: var(--t2);
+      margin-top: 5px;
+      line-height: 1.3
+    }
+
+    .mc-accent {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 1.5px
+    }
+
+    /* ━━━ CONTROLS BAR ━━━ */
+    .controls-section {
+      background: var(--surf);
+      border-bottom: 1px solid var(--b1);
+      padding: 10px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+
+    .search-wrapper {
+      position: relative;
+      display: flex;
+      align-items: center;
+      width: 260px;
+    }
+
+    .search-icon {
+      position: absolute;
+      left: 10px;
+      color: var(--t2);
+      font-size: 12px;
+      pointer-events: none;
+    }
+
+    .search-input {
+      width: 100%;
+      background: var(--card2);
+      border: 1px solid var(--b1);
+      border-radius: 5px;
+      padding: 6px 8px 6px 28px;
+      font-size: 12px;
+      color: var(--t0);
+      outline: none;
+      transition: border-color .1s;
+      font-family: var(--sans);
+    }
+
+    .search-input::placeholder {
+      color: var(--t3)
+    }
+
+    .search-input:focus {
+      border-color: var(--blue)
+    }
+
+    .btn-action {
+      background: var(--card2);
+      border: 1px solid var(--b1);
+      border-radius: 5px;
+      color: var(--t1);
+      padding: 6px 12px;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all .12s;
+      font-family: var(--sans);
+    }
+
+    .btn-action:hover {
+      color: var(--t0);
+      border-color: var(--b2);
+    }
+
+    .seg-toggle {
+      display: flex;
+      background: var(--card2);
+      border: 1px solid var(--b1);
+      border-radius: 5px;
+      padding: 2px;
+      gap: 2px;
+    }
+
+    .seg-btn {
+      padding: 5px 11px;
+      font-size: 11.5px;
+      border-radius: 4px;
+      color: var(--t2);
+      cursor: pointer;
+      transition: all .12s;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .seg-btn:hover {
+      color: var(--t1)
+    }
+
+    .seg-btn.on {
+      background: var(--card3);
+      color: var(--t0);
+    }
+
+    .seg-btn .cnt {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--t2);
+      background: var(--b0);
+      padding: 0 5px;
+      border-radius: 8px;
+    }
+
+    .seg-btn.on .cnt {
+      color: var(--t1)
+    }
+
+    /* ━━━ BODY SPLIT ━━━ */
+    .body-split {
+      flex: 1;
+      display: flex;
+      min-height: 0;
+      overflow: hidden
+    }
+
+    .fleet-scroll {
+      flex: 1;
+      overflow-y: auto;
+      padding: 18px 20px 24px;
+    }
+
+    .fleet-group-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .09em;
+      color: var(--t2);
+      margin-bottom: 12px;
+    }
+
+    .fleet-group-label:not(:first-child) {
+      margin-top: 22px;
+    }
+
+    .fleet-group-label .cnt-pill {
+      font-family: var(--mono);
+      font-size: 10px;
+      color: var(--t1);
+      background: var(--card2);
+      border: 1px solid var(--b1);
+      padding: 1px 7px;
+      border-radius: 10px;
+    }
+
+    .fleet-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 14px;
+    }
+
+    .empty-fleet {
+      padding: 50px 20px;
+      text-align: center;
+      border: 1.5px dashed var(--b1);
+      border-radius: 10px;
+      color: var(--t2);
+      font-size: 12.5px;
+    }
+
+    .empty-fleet i {
+      font-size: 26px;
+      color: var(--b2);
+      display: block;
+      margin-bottom: 10px;
+    }
+
+    /* ━━━ WORKER CARD ━━━ */
+    .worker-card {
+      background: var(--card);
+      border: 1px solid var(--b1);
+      border-radius: 10px;
+      padding: 16px;
+      position: relative;
+      transition: border-color .15s;
+      overflow: hidden;
+    }
+
+    .worker-card:hover {
+      border-color: var(--b2)
+    }
+
+    .worker-card.is-stale {
+      border-color: var(--red-ring);
+      background: linear-gradient(180deg, var(--red-dim), transparent 40%), var(--card);
+    }
+
+    .wc-indicator {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 3px;
+      height: 100%;
+    }
+
+    .wc-offline-strip {
+      position: absolute;
+      top: 0;
+      left: 3px;
+      right: 0;
+      text-align: center;
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .07em;
+      padding: 4px 0;
+      background: var(--red-dim);
+      color: var(--red);
+    }
+
+    .wc-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      margin-bottom: 14px;
+      padding-left: 6px;
+    }
+
+    .wc-id-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 7px;
+    }
+
+    .wc-status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .wc-id {
+      font-size: 14px;
+      font-weight: 700;
+      color: var(--t0);
+      letter-spacing: -.01em;
+    }
+
+    .wc-tags {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .wc-queue-chip {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      background: var(--card2);
+      border: 1px solid var(--b1);
+      color: var(--t1);
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    .wc-flag {
+      font-size: 9.5px;
+      font-weight: 700;
+      letter-spacing: .03em;
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+
+    .wc-flag.f-heal {
+      color: var(--green)
+    }
+
+    .wc-flag.f-scale {
+      color: var(--blue)
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 10.5px;
+      font-weight: 500;
+      padding: 3px 8px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+
+    .s-idle {
+      background: var(--green-dim);
+      color: #5DD1A0;
+      border: 1px solid var(--green-ring);
+    }
+
+    .s-processing {
+      background: var(--blue-dim);
+      color: #7BA8FF;
+      border: 1px solid var(--blue-ring);
+    }
+
+    .s-stopped {
+      background: var(--card3);
+      color: var(--t1);
+      border: 1px solid var(--b2);
+    }
+
+    .s-offline {
+      background: var(--red-dim);
+      color: #D47070;
+      border: 1px solid var(--red-ring);
+    }
+
+    /* stat strip */
+    .wc-stats {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 14px;
+      padding-left: 6px;
+    }
+
+    .wc-stat {
+      background: var(--card2);
+      border: 1px solid var(--b0);
+      border-radius: 7px;
+      padding: 8px 9px;
+    }
+
+    .wc-stat-lbl {
+      font-size: 8.5px;
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      color: var(--t2);
+      margin-bottom: 4px;
+    }
+
+    .wc-stat-val {
+      font-size: 15px;
+      font-weight: 500;
+      letter-spacing: -.02em;
+      font-variant-numeric: tabular-nums;
+    }
+
+    /* utilization */
+    .wc-util {
+      margin-bottom: 14px;
+      padding-left: 6px;
+    }
+
+    .wc-util-head {
+      display: flex;
+      justify-content: space-between;
+      font-size: 9.5px;
+      color: var(--t2);
+      margin-bottom: 6px;
+      font-weight: 600;
+      letter-spacing: .04em;
+    }
+
+    .wc-util-head span:last-child {
+      font-family: var(--mono);
+      color: var(--t1);
+    }
+
+    .cap-bar {
+      display: flex;
+      gap: 2px;
+      height: 5px;
+    }
+
+    .cap-seg {
+      flex: 1;
+      border-radius: 2px;
+      background: var(--b0);
+    }
+
+    /* toggles row */
+    .wc-toggles {
+      display: flex;
+      gap: 16px;
+      padding-left: 6px;
+      margin-bottom: 14px;
+    }
+
+    .tgl-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    .tgl-switch {
+      width: 28px;
+      height: 16px;
+      border-radius: 9px;
+      background: var(--b1);
+      border: 1px solid var(--b2);
+      position: relative;
+      transition: background .15s, border-color .15s;
+      flex-shrink: 0;
+    }
+
+    .tgl-switch::after {
+      content: '';
+      position: absolute;
+      width: 11px;
+      height: 11px;
+      border-radius: 50%;
+      background: var(--t2);
+      top: 1.5px;
+      left: 1.5px;
+      transition: transform .15s, background .15s;
+    }
+
+    .tgl-row.on .tgl-switch {
+      background: var(--green-dim);
+      border-color: var(--green-ring);
+    }
+
+    .tgl-row.on .tgl-switch::after {
+      transform: translateX(12px);
+      background: var(--green);
+    }
+
+    .tgl-row.scale.on .tgl-switch {
+      background: var(--blue-dim);
+      border-color: var(--blue-ring);
+    }
+
+    .tgl-row.scale.on .tgl-switch::after {
+      background: var(--blue);
+    }
+
+    .tgl-label {
+      font-size: 11px;
+      color: var(--t1);
+      font-weight: 500;
+    }
+
+    /* active jobs */
+    .wc-jobs {
+      padding-left: 6px;
+      margin-bottom: 14px;
+    }
+
+    .wc-jobs-lbl {
+      font-size: 9px;
+      font-weight: 700;
+      color: var(--t2);
+      text-transform: uppercase;
+      letter-spacing: .07em;
+      margin-bottom: 7px;
+    }
+
+    .wc-job-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 5px;
+    }
+
+    .wc-job-chip {
+      font-family: var(--mono);
+      font-size: 10px;
+      background: var(--blue-dim);
+      border: 1px solid var(--blue-ring);
+      color: #7BA8FF;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    /* footer */
+    .wc-foot {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding-top: 13px;
+      border-top: 1px solid var(--b0);
+      padding-left: 6px;
+    }
+
+    .wc-ago {
+      font-size: 11px;
+      color: var(--t2);
+      cursor: default;
+    }
+
+    .wc-actions {
+      display: flex;
+      gap: 6px;
+      position: relative;
+    }
+
+    .btn-tool {
+      width: 28px;
+      height: 28px;
+      border-radius: 6px;
+      background: var(--card2);
+      border: 1px solid var(--b1);
+      color: var(--t2);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all .1s;
+      font-size: 12px;
+    }
+
+    .btn-tool:hover {
+      background: var(--card3);
+      color: var(--t1);
+      border-color: var(--b2);
+    }
+
+    .btn-tool.danger:hover {
+      color: var(--red);
+      background: var(--red-dim);
+      border-color: var(--red-ring);
+    }
+
+    .btn-tool.success:hover {
+      color: var(--green);
+      background: var(--green-dim);
+      border-color: var(--green-ring);
+    }
+
+    .btn-pill {
+      height: 28px;
+      padding: 0 11px;
+      border-radius: 6px;
+      background: var(--card2);
+      border: 1px solid var(--b1);
+      color: var(--t1);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 5px;
+      font-size: 11.5px;
+      font-weight: 500;
+      transition: all .1s;
+      font-family: var(--sans);
+    }
+
+    .btn-pill:hover {
+      border-color: var(--b2);
+      color: var(--t0);
+    }
+
+    .btn-pill.danger {
+      color: var(--red);
+      border-color: var(--red-ring);
+      background: var(--red-dim);
+    }
+
+    .btn-pill.danger:hover {
+      background: rgba(212, 90, 90, .18);
+    }
+
+    .btn-pill.success {
+      color: var(--green);
+      border-color: var(--green-ring);
+      background: var(--green-dim);
+    }
+
+    .btn-pill.success:hover {
+      background: rgba(57, 201, 138, .18);
+    }
+
+    .stop-menu {
+      position: absolute;
+      bottom: calc(100% + 6px);
+      right: 0;
+      width: 168px;
+      z-index: 100;
+      background: var(--card3);
+      border: 1px solid var(--b2);
+      border-radius: 8px;
+      padding: 4px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, .5);
+    }
+
+    .stop-menu button {
+      display: block;
+      width: 100%;
+      text-align: left;
+      background: none;
+      border: none;
+      padding: 8px 10px;
+      font-size: 12px;
+      color: var(--t1);
+      cursor: pointer;
+      border-radius: 5px;
+      font-family: var(--sans);
+      transition: background .1s, color .1s;
+    }
+
+    .stop-menu button:hover {
+      background: var(--card2);
+      color: var(--t0);
+    }
+
+    /* ━━━ RIGHT RAIL ━━━ */
+    .control-rail {
+      width: var(--rail-w);
+      flex-shrink: 0;
+      border-left: 1px solid var(--b1);
+      background: var(--surf);
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1px;
+    }
+
+    .rail-card {
+      background: var(--card);
+      border-bottom: 1px solid var(--b1);
+      padding: 16px;
+    }
+
+    .rail-card-title {
+      font-size: 9.5px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      color: var(--t2);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      margin-bottom: 14px;
+    }
+
+    .rail-card-title .ti {
+      font-size: 12px;
+    }
+
+    .field {
+      margin-bottom: 13px;
+    }
+
+    .field-label {
+      font-size: 10.5px;
+      color: var(--t2);
+      margin-bottom: 6px;
+      display: block;
+      font-weight: 500;
+    }
+
+    .field-select,
+    .field-input {
+      width: 100%;
+      background: var(--card2);
+      border: 1px solid var(--b1);
+      border-radius: 6px;
+      color: var(--t0);
+      padding: 8px 10px;
+      font-size: 12.5px;
+      outline: none;
+      font-family: var(--sans);
+      transition: border-color .1s;
+    }
+
+    .field-select {
+      cursor: pointer;
+    }
+
+    .field-input::placeholder {
+      color: var(--t3)
+    }
+
+    .field-select:focus,
+    .field-input:focus {
+      border-color: var(--blue)
+    }
+
+    .checkbox-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      user-select: none;
+      margin-bottom: 14px;
+    }
+
+    .checkbox-box {
+      width: 16px;
+      height: 16px;
+      border-radius: 4px;
+      border: 1px solid var(--b2);
+      background: var(--card2);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      transition: all .1s;
+    }
+
+    .checkbox-row.checked .checkbox-box {
+      background: var(--blue-dim);
+      border-color: var(--blue);
+      color: var(--blue);
+    }
+
+    .checkbox-row span.lbl {
+      font-size: 12px;
+      color: var(--t1);
+    }
+
+    .btn-full {
+      width: 100%;
+      height: 40px;
+      border-radius: 7px;
+      background: var(--blue-dim);
+      border: 1px solid var(--blue-ring);
+      color: var(--blue);
+      font-weight: 600;
+      font-size: 12.5px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      transition: all .12s;
+      font-family: var(--sans);
+    }
+
+    .btn-full:hover {
+      background: rgba(91, 138, 240, .18);
+      color: #fff;
+    }
+
+    .btn-full:disabled {
+      opacity: .5;
+      cursor: not-allowed;
+    }
+
+    .deploy-msg {
+      font-size: 11px;
+      margin-bottom: 12px;
+      padding: 7px 10px;
+      border-radius: 5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .deploy-msg.ok {
+      color: var(--green);
+      background: var(--green-dim);
+      border: 1px solid var(--green-ring);
+    }
+
+    .deploy-msg.err {
+      color: var(--red);
+      background: var(--red-dim);
+      border: 1px solid var(--red-ring);
+    }
+
+    /* slider */
+    .slider-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin-bottom: 8px;
+    }
+
+    .slider-val {
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--t0);
+      font-weight: 500;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 4px;
+      background: var(--b1);
+      border-radius: 2px;
+      outline: none;
+      -webkit-appearance: none;
+      margin-bottom: 14px;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: var(--blue);
+      cursor: pointer;
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 0 1px var(--blue-ring);
+    }
+
+    /* scaling policy list */
+    .policy-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid var(--b0);
+    }
+
+    .policy-row:last-child {
+      border-bottom: none;
+    }
+
+    .policy-row.off {
+      opacity: .45;
+    }
+
+    .policy-q {
+      font-size: 12px;
+      font-family: var(--mono);
+      color: var(--t1);
+    }
+
+    .policy-badge {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: .05em;
+      padding: 2px 7px;
+      border-radius: 4px;
+    }
+
+    .policy-badge.active {
+      background: var(--green-dim);
+      color: var(--green);
+      border: 1px solid var(--green-ring);
+    }
+
+    .policy-badge.inactive {
+      background: var(--card3);
+      color: var(--t2);
+      border: 1px solid var(--b1);
+    }
+  </style>
+</head>
+
+<body>
+  <div class="shell">
+
+    <!-- ── ICON NAV ────────────────────────── -->
+    <nav class="icon-nav">
+      <div class="nav-brand"><i class="ti ti-bolt"></i></div>
+      <div class="nav-btn" data-tip="Dashboard"><i class="ti ti-layout-dashboard"></i></div>
+      <div class="nav-btn" data-tip="Jobs"><i class="ti ti-briefcase"></i></div>
+      <div class="nav-btn active" data-tip="Workers"><i class="ti ti-cpu"></i></div>
+      <div class="nav-btn" data-tip="Analytics"><i class="ti ti-chart-bar"></i></div>
+      <div class="nav-sep"></div>
+      <div class="nav-btn" data-tip="Alerts"><i class="ti ti-bell"></i></div>
+      <div class="nav-bottom">
+        <div class="nav-btn" data-tip="Toggle theme" id="theme-btn"><i class="ti ti-sun"></i></div>
+        <div class="nav-btn" data-tip="Settings"><i class="ti ti-settings"></i></div>
+      </div>
+    </nav>
+
+    <!-- ── MAIN COLUMN ─────────────────────── -->
+    <div class="main-col">
+
+      <!-- TOPBAR -->
+      <div class="topbar">
+        <div class="topbar-title">
+          <span class="eyebrow">Pulsar</span>
+          <span style="color:var(--b2)">·</span>
+          Worker Fleet
+        </div>
+        <div class="topbar-sep"></div>
+        <div class="tb-pill">v2.0</div>
+        <div class="topbar-sep"></div>
+        <div class="tb-live"><span class="live-dot"></span>WebSocket connected</div>
+        <div class="topbar-right">
+          <div class="tb-icon" title="Refresh" onclick="fetchWorkers()"><i class="ti ti-refresh"></i></div>
+          <div class="tb-icon" title="Filter"><i class="ti ti-filter"></i></div>
+        </div>
+      </div>
+
+      <!-- METRIC RAIL -->
+      <div class="metric-rail">
+        <div class="mc">
+          <div class="mc-label"><span class="wc-status-dot" style="background:var(--green)"></span>Active Nodes</div>
+          <div class="mc-val" id="m-active" style="color:var(--green)">0</div>
+          <div class="mc-sub">currently running</div>
+          <div class="mc-accent" style="background:var(--green);opacity:.5"></div>
+        </div>
+        <div class="mc">
+          <div class="mc-label">Jobs Processed</div>
+          <div class="mc-val" id="m-processed">0</div>
+          <div class="mc-sub">across all workers</div>
+        </div>
+        <div class="mc">
+          <div class="mc-label">System Failures</div>
+          <div class="mc-val" id="m-failed" style="color:var(--red)">0</div>
+          <div class="mc-sub">total failures, fleet-wide</div>
+          <div class="mc-accent" style="background:var(--red);opacity:.35"></div>
+        </div>
+        <div class="mc">
+          <div class="mc-label">Inactive Nodes</div>
+          <div class="mc-val" id="m-inactive" style="color:var(--t1)">0</div>
+          <div class="mc-sub">stopped or disconnected</div>
+        </div>
+      </div>
+
+      <!-- CONTROLS -->
+      <div class="controls-section">
+        <div class="search-wrapper">
+          <i class="ti ti-search search-icon"></i>
+          <input type="text" class="search-input" id="search-input" placeholder="Search worker ID or queue..."
+            oninput="render()">
+        </div>
+        <div class="seg-toggle" id="view-toggle">
+          <div class="seg-btn on" data-v="all" onclick="setView('all')">All <span class="cnt" id="cnt-all">0</span>
+          </div>
+          <div class="seg-btn" data-v="active" onclick="setView('active')">Active <span class="cnt"
+              id="cnt-active">0</span></div>
+          <div class="seg-btn" data-v="inactive" onclick="setView('inactive')">Inactive <span class="cnt"
+              id="cnt-inactive">0</span></div>
+        </div>
+        <div style="flex:1"></div>
+        <button class="btn-action" onclick="injectLoadShortcut()"><i class="ti ti-bolt"></i>Inject Load</button>
+      </div>
+
+      <div class="body-split">
+
+        <!-- FLEET SCROLL -->
+        <div class="fleet-scroll" id="fleet-scroll"></div>
+
+        <!-- RIGHT CONTROL RAIL -->
+        <div class="control-rail">
+
+          <!-- DEPLOY -->
+          <div class="rail-card">
+            <div class="rail-card-title"><i class="ti ti-rocket"></i>Deploy Instance</div>
+
+            <div class="field">
+              <label class="field-label">Queue</label>
+              <select class="field-select" id="deploy-queue">
+                <option value="notifications">notifications</option>
+                <option value="media">media</option>
+                <option value="default">default</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label class="field-label">Worker ID</label>
+              <input type="text" class="field-input" id="deploy-id" placeholder="e.g. node-01" value="api-node-01">
+            </div>
+
+            <div class="checkbox-row checked" id="deploy-autoheal" onclick="this.classList.toggle('checked')">
+              <div class="checkbox-box"><i class="ti ti-check" style="font-size:10px"></i></div>
+              <span class="lbl">Auto-healing enabled</span>
+            </div>
+
+            <div id="deploy-msg"></div>
+
+            <button class="btn-full" id="deploy-btn" onclick="deployNode()">
+              <i class="ti ti-rocket" style="font-size:13px"></i>Deploy Node
+            </button>
+          </div>
+
+          <!-- LOAD INJECTOR -->
+          <div class="rail-card">
+            <div class="rail-card-title"><i class="ti ti-bolt"></i>Load Injector</div>
+
+            <div class="slider-row">
+              <label class="field-label" style="margin:0">Job Count</label>
+              <span class="slider-val" id="seed-count-val">5</span>
+            </div>
+            <input type="range" id="seed-count" min="1" max="50" value="5"
+              oninput="document.getElementById('seed-count-val').innerText=this.value">
+
+            <button class="btn-full" id="inject-btn" onclick="injectLoad()">
+              <i class="ti ti-bolt" style="font-size:13px"></i>Inject Load
+            </button>
+          </div>
+
+          <!-- SCALING POLICY -->
+          <div class="rail-card" style="border-bottom:none">
+            <div class="rail-card-title"><i class="ti ti-chart-bar"></i>Adaptive Scaling</div>
+            <div style="font-size:11px;color:var(--t2);margin-bottom:12px;margin-top:-4px">Autoscaler policy status per
+              queue</div>
+            <div id="policy-list"></div>
+          </div>
+
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <script>
+    /* ══════════ MOCK DATA (replace with apiService calls) ══════════ */
+    const QUEUES = ["notifications", "media", "default"];
+
+    let WORKERS = [
+      { worker_id: "node-01", queue_name: "notifications", status: "processing", jobs_processed: 412, jobs_failed: 6, concurrency: 4, active_job_ids: ["a3f19b2c", "d22b3c4f", "e11d9a4b"], auto_restart: true, adaptive_scaling: true, started_at: Date.now() - 3600_000 * 5, last_activity: new Date(Date.now() - 2000).toISOString() },
+      { worker_id: "node-02", queue_name: "media", status: "idle", jobs_processed: 218, jobs_failed: 2, concurrency: 2, active_job_ids: [], auto_restart: true, adaptive_scaling: true, started_at: Date.now() - 3600_000 * 8, last_activity: new Date(Date.now() - 8000).toISOString() },
+      { worker_id: "node-03", queue_name: "default", status: "processing", jobs_processed: 96, jobs_failed: 14, concurrency: 3, active_job_ids: ["c11a2b3e"], auto_restart: false, adaptive_scaling: true, started_at: Date.now() - 3600_000 * 2, last_activity: new Date(Date.now() - 1000).toISOString() },
+      { worker_id: "node-04", queue_name: "notifications", status: "idle", jobs_processed: 53, jobs_failed: 0, concurrency: 2, active_job_ids: [], auto_restart: true, adaptive_scaling: false, started_at: Date.now() - 3600_000 * 1, last_activity: new Date(Date.now() - 45000).toISOString() },
+      { worker_id: "node-05", queue_name: "media", status: "stopped", jobs_processed: 301, jobs_failed: 9, concurrency: 4, active_job_ids: [], auto_restart: false, adaptive_scaling: true, started_at: Date.now() - 3600_000 * 30, last_activity: new Date(Date.now() - 3600_000 * 2).toISOString() },
+    ];
+
+    let AUTOSCALER_CONFIG = {
+      notifications: { enabled: true },
+      media: { enabled: true },
+      default: { enabled: false },
+    };
+
+    let view = "all";
+    let now = Date.now();
+
+    /* ══════════ HELPERS ══════════ */
+    function isStale(w) {
+      return w.status !== "stopped" && (now - new Date(w.last_activity).getTime() > 30000);
+    }
+    function ago(iso) {
+      const d = now - new Date(iso).getTime();
+      if (d < 5000) return "just now";
+      return d < 60000 ? `${Math.floor(d / 1000)}s ago` : `${Math.floor(d / 60000)}m ago`;
+    }
+    function setView(v) {
+      view = v;
+      document.querySelectorAll('.seg-btn').forEach(b => b.classList.toggle('on', b.dataset.v === v));
+      render();
+    }
+
+    /* ══════════ RENDER ══════════ */
+    function render() {
+      const search = document.getElementById('search-input').value.toLowerCase();
+      const match = w => !search || w.worker_id.toLowerCase().includes(search) || w.queue_name.toLowerCase().includes(search);
+
+      const active = WORKERS.filter(w => w.status !== "stopped" && !isStale(w));
+      const inactive = WORKERS.filter(w => w.status === "stopped" || isStale(w));
+
+      document.getElementById('m-active').innerText = active.length;
+      document.getElementById('m-inactive').innerText = inactive.length;
+      document.getElementById('m-processed').innerText = WORKERS.reduce((a, w) => a + w.jobs_processed, 0).toLocaleString();
+      document.getElementById('m-failed').innerText = WORKERS.reduce((a, w) => a + w.jobs_failed, 0);
+      document.getElementById('cnt-all').innerText = WORKERS.length;
+      document.getElementById('cnt-active').innerText = active.length;
+      document.getElementById('cnt-inactive').innerText = inactive.length;
+
+      let groups = [];
+      if (view === 'all' || view === 'active') groups.push({ label: 'Active Workers', list: active.filter(match), key: 'active' });
+      if (view === 'all' || view === 'inactive') groups.push({ label: 'Inactive Workers', list: inactive.filter(match), key: 'inactive' });
+
+      const scroll = document.getElementById('fleet-scroll');
+      scroll.innerHTML = groups.map(g => {
+        const body = g.list.length
+          ? `<div class="fleet-grid">${g.list.map(workerCard).join('')}</div>`
+          : `<div class="empty-fleet"><i class="ti ${g.key === 'active' ? 'ti-server-off' : 'ti-mood-empty'}"></i>${search ? 'No workers match your search' : (g.key === 'active' ? 'No active workers. Deploy from the panel →' : 'No inactive workers')}</div>`;
+        return `<div class="fleet-group-label">${g.label} <span class="cnt-pill">${g.list.length}</span></div>${body}`;
+      }).join('');
+
+      renderPolicies();
+    }
+
+    function workerCard(w) {
+      const stale = isStale(w);
+      const dotColor = stale ? 'var(--red)' : w.status === 'processing' ? 'var(--blue)' : w.status === 'idle' ? 'var(--green)' : 'var(--t2)';
+      const badgeCls = stale ? 's-offline' : (w.status === 'processing' ? 's-processing' : w.status === 'idle' ? 's-idle' : 's-stopped');
+      const badgeLbl = stale ? 'OFFLINE' : w.status.toUpperCase();
+      const total = w.jobs_processed + w.jobs_failed;
+      const rate = total > 0 ? Math.round((w.jobs_processed / total) * 100) : 100;
+      const slotsUsed = w.active_job_ids.length;
+
+      let capSegs = '';
+      for (let i = 0; i < w.concurrency; i++) {
+        capSegs += `<div class="cap-seg" style="background:${i < slotsUsed ? 'var(--blue)' : 'var(--b0)'}"></div>`;
+      }
+
+      const jobChips = w.active_job_ids.length
+        ? `<div class="wc-jobs"><div class="wc-jobs-lbl">Active Jobs</div><div class="wc-job-chips">${w.active_job_ids.map(id => `<span class="wc-job-chip">${id.substring(0, 8)}</span>`).join('')}</div></div>`
+        : '';
+
+      const footerActions = (w.status !== 'stopped' && !stale)
+        ? `
+          <div class="btn-pill danger" onclick="crashWorker('${w.worker_id}')"><i class="ti ti-bug"></i>Crash</div>
+          <div style="position:relative">
+            <div class="btn-pill" onclick="toggleStopMenu(event,'${w.worker_id}')"><i class="ti ti-player-stop"></i>Stop</div>
+            <div class="stop-menu" id="stopmenu-${w.worker_id}" style="display:none">
+              <button onclick="stopWorker('${w.worker_id}')">Manual Stop</button>
+              <button onclick="stopWorker('${w.worker_id}', {auto_restart:true})">Auto-Restart</button>
+              <button onclick="stopWorker('${w.worker_id}', {restart_in:30})">Restart in 30s</button>
+            </div>
+          </div>`
+        : `
+          <div class="btn-pill success" onclick="startWorker('${w.worker_id}')"><i class="ti ti-player-play"></i>Start</div>
+          <div class="btn-pill danger" onclick="removeWorker('${w.worker_id}')"><i class="ti ti-trash"></i>Remove</div>`;
+
+      return `
+      <div class="worker-card ${stale ? 'is-stale' : ''}">
+        <div class="wc-indicator" style="background:${dotColor}"></div>
+        ${stale ? `<div class="wc-offline-strip">DISCONNECTED</div>` : ''}
+        <div class="wc-head" style="${stale ? 'margin-top:18px' : ''}">
+          <div>
+            <div class="wc-id-row">
+              <div class="wc-status-dot" style="background:${dotColor}"></div>
+              <span class="wc-id">${w.worker_id}</span>
+            </div>
+            <div class="wc-tags">
+              <span class="wc-queue-chip">queue:${w.queue_name}</span>
+              ${w.auto_restart ? `<span class="wc-flag f-heal" title="Automatically restarts on crash"><i class="ti ti-shield-check" style="font-size:10px"></i>AUTO-HEAL</span>` : ''}
+              ${w.adaptive_scaling !== false ? `<span class="wc-flag f-scale" title="Adaptive scaling enabled"><i class="ti ti-chart-bar" style="font-size:10px"></i>AUTO-SCALE</span>` : ''}
+            </div>
+          </div>
+          <span class="status-badge ${badgeCls}">${badgeLbl}</span>
+        </div>
+
+        <div class="wc-stats">
+          <div class="wc-stat"><div class="wc-stat-lbl">Processed</div><div class="wc-stat-val" style="color:var(--green)">${w.jobs_processed}</div></div>
+          <div class="wc-stat"><div class="wc-stat-lbl">Failed</div><div class="wc-stat-val" style="color:var(--red)">${w.jobs_failed}</div></div>
+          <div class="wc-stat"><div class="wc-stat-lbl">Slots</div><div class="wc-stat-val" style="color:var(--blue)">${slotsUsed}/${w.concurrency}</div></div>
+          <div class="wc-stat"><div class="wc-stat-lbl">Success</div><div class="wc-stat-val" style="color:${rate >= 80 ? 'var(--green)' : 'var(--red)'}">${rate}%</div></div>
+        </div>
+
+        <div class="wc-util">
+          <div class="wc-util-head"><span>UTILIZATION</span><span>${slotsUsed}/${w.concurrency} SLOTS</span></div>
+          <div class="cap-bar">${capSegs}</div>
+        </div>
+
+        <div class="wc-toggles">
+          <div class="tgl-row ${w.auto_restart ? 'on' : ''}" onclick="toggleSetting('${w.worker_id}','auto_restart')">
+            <div class="tgl-switch"></div><span class="tgl-label">🛡️ Auto-Heal</span>
+          </div>
+          <div class="tgl-row scale ${w.adaptive_scaling !== false ? 'on' : ''}" onclick="toggleSetting('${w.worker_id}','adaptive_scaling')">
+            <div class="tgl-switch"></div><span class="tgl-label">📊 Auto-Scale</span>
+          </div>
+        </div>
+
+        ${jobChips}
+
+        <div class="wc-foot">
+          <span class="wc-ago" title="Started: ${new Date(w.started_at).toLocaleString()}">Active ${ago(w.last_activity)}</span>
+          <div class="wc-actions">${footerActions}</div>
+        </div>
+      </div>`;
+    }
+
+    function renderPolicies() {
+      document.getElementById('policy-list').innerHTML = QUEUES.map(q => {
+        const c = AUTOSCALER_CONFIG[q] || { enabled: false };
+        return `<div class="policy-row ${c.enabled ? '' : 'off'}">
+          <span class="policy-q">${q}</span>
+          <span class="policy-badge ${c.enabled ? 'active' : 'inactive'}">${c.enabled ? 'ACTIVE' : 'OFF'}</span>
+        </div>`;
+      }).join('');
+    }
+
+    /* ══════════ ACTIONS (wire to apiService in real app) ══════════ */
+    function fetchWorkers() { render(); }
+
+    function toggleSetting(id, key) {
+      const w = WORKERS.find(w => w.worker_id === id);
+      if (!w) return;
+      w[key] = !(key === 'adaptive_scaling' ? w.adaptive_scaling !== false : w[key]);
+      render();
+    }
+
+    function toggleStopMenu(e, id) {
+      e.stopPropagation();
+      document.querySelectorAll('.stop-menu').forEach(m => { if (m.id !== `stopmenu-${id}`) m.style.display = 'none'; });
+      const m = document.getElementById(`stopmenu-${id}`);
+      m.style.display = m.style.display === 'block' ? 'none' : 'block';
+    }
+    document.addEventListener('click', () => document.querySelectorAll('.stop-menu').forEach(m => m.style.display = 'none'));
+
+    function stopWorker(id, options) {
+      const w = WORKERS.find(w => w.worker_id === id);
+      if (w) w.status = 'stopped';
+      render();
+    }
+
+    function startWorker(id) {
+      const w = WORKERS.find(w => w.worker_id === id);
+      if (w) { w.status = 'idle'; w.last_activity = new Date().toISOString(); }
+      render();
+    }
+
+    function crashWorker(id) {
+      const w = WORKERS.find(w => w.worker_id === id);
+      if (w) { w.jobs_failed += 1; if (w.auto_restart) { w.status = 'idle'; w.last_activity = new Date().toISOString(); } else { w.status = 'stopped'; } }
+      render();
+    }
+
+    function removeWorker(id) {
+      if (!confirm(`Remove worker '${id}' from registry?`)) return;
+      WORKERS = WORKERS.filter(w => w.worker_id !== id);
+      render();
+    }
+
+    function deployNode() {
+      const id = document.getElementById('deploy-id').value.trim();
+      const msgBox = document.getElementById('deploy-msg');
+      if (!id) {
+        msgBox.innerHTML = `<div class="deploy-msg err"><i class="ti ti-alert-circle"></i>Worker ID required</div>`;
+        return;
+      }
+      const queue = document.getElementById('deploy-queue').value;
+      const autoHeal = document.getElementById('deploy-autoheal').classList.contains('checked');
+      WORKERS.push({ worker_id: id, queue_name: queue, status: 'idle', jobs_processed: 0, jobs_failed: 0, concurrency: 2, active_job_ids: [], auto_restart: autoHeal, adaptive_scaling: true, started_at: Date.now(), last_activity: new Date().toISOString() });
+      msgBox.innerHTML = `<div class="deploy-msg ok"><i class="ti ti-check"></i>Instance started</div>`;
+      document.getElementById('deploy-id').value = '';
+      render();
+    }
+
+    function injectLoad() {
+      const btn = document.getElementById('inject-btn');
+      btn.innerHTML = `<i class="ti ti-loader-2" style="font-size:13px"></i>Injecting...`;
+      setTimeout(() => { btn.innerHTML = `<i class="ti ti-bolt" style="font-size:13px"></i>Inject Load`; }, 600);
+    }
+
+    function injectLoadShortcut() {
+      document.getElementById('inject-btn').scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    /* ══════════ THEME ══════════ */
+    let isLight = false;
+    document.getElementById('theme-btn').onclick = function () {
+      isLight = !isLight;
+      this.querySelector('i').className = 'ti ' + (isLight ? 'ti-moon' : 'ti-sun');
+    };
+
+    /* ══════════ TICK ══════════ */
+    setInterval(() => { now = Date.now(); render(); }, 1000);
+
+    /* ══════════ INIT ══════════ */
+    render();
+  </script>
+</body>
+
+</html>

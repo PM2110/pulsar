@@ -1,14 +1,14 @@
 import { useState, useCallback, useEffect } from "react";
 import { apiService, socket } from "../lib/api.service";
 import { Job } from "../types";
-import { SortState } from "../components/Table";
+import { SortState } from "../components/ui/Table";
 
 export const useJobs = (limit: number = 10) => {
   const [jobs, setJobs] = useState<Job[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(0);
-  const [statusFilter, setStatusFilter] = useState("");
-  const [queueFilter, setQueueFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<string[]>([]);
+  const [queueFilter, setQueueFilter] = useState<string[]>([]);
   const [sort, setSort] = useState<SortState | undefined>(undefined);
   const [loading, setLoading] = useState(false);
 
@@ -18,8 +18,8 @@ export const useJobs = (limit: number = 10) => {
       const data = await apiService.getJobs({
         limit,
         offset: page * limit,
-        status: statusFilter || undefined,
-        queue_name: queueFilter || undefined,
+        status: statusFilter.length > 0 ? statusFilter.join(",") : undefined,
+        queue_name: queueFilter.length > 0 ? queueFilter.join(",") : undefined,
         sort_by: sort?.key || undefined,
         sort_order: sort?.order || undefined,
       });

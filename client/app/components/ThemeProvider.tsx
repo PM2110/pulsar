@@ -16,7 +16,14 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const saved = localStorage.getItem("pulsar-theme") as Theme | null;
+    const currentTheme = saved || "dark";
     if (saved) setTheme(saved);
+    document.documentElement.setAttribute("data-theme", currentTheme);
+    if (currentTheme === "light") {
+      document.body.classList.add("light");
+    } else {
+      document.body.classList.remove("light");
+    }
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -24,6 +31,11 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
       const next = prev === "dark" ? "light" : "dark";
       localStorage.setItem("pulsar-theme", next);
       document.documentElement.setAttribute("data-theme", next);
+      if (next === "light") {
+        document.body.classList.add("light");
+      } else {
+        document.body.classList.remove("light");
+      }
       return next;
     });
   }, []);

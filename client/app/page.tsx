@@ -2,33 +2,29 @@
 
 import { useEffect, useRef, useState, useCallback } from "react";
 import { apiService, socket } from "./lib/api.service";
-import { Tooltip, Accordion, SearchInput, AnimNum } from "./components/ui";
-import { InfiniteScroll } from "./components/InfiniteScroll";
 import { useDebounce } from "./hooks/useDebounce";
-import { formatTimeIST } from "./lib/utils";
+import { DistributionBar } from "./components/dashboard/DistributionBar";
+import { PerformanceMetrics } from "./components/dashboard/PerformanceMetrics";
+import { OutboxPanel } from "./components/dashboard/OutboxPanel";
+import { QueueLanes } from "./components/dashboard/QueueLanes";
+import { SeedJobs } from "./components/dashboard/SeedJobs";
+import { ExecutionHistory } from "./components/dashboard/ExecutionHistory";
+import { Tooltip } from "./components/ui/Tooltip";
 
 interface Stats {
-  jobs: { total: number; pending: number; processing: number; completed: number; failed: number };
+  jobs: { total: number; pending: number; processing: number; completed: number; failed: number; delayed?: number };
   outbox: { total: number; pending: number; processed: number; failed: number };
   queues: {
-    depths: Record<string, number>; delayed: Record<string, number>;
+    depths: Record<string, number>;
+    delayed: Record<string, number>;
     readyJobs: Record<string, { id: string; runAt: number }[]>;
     delayedJobs: Record<string, { id: string; runAt: number; attempts: number }[]>;
     processing: Record<string, { id: string; attempts: number; startedAt: number | null; workerId: string | null; workerHostname: string | null }[]>;
   };
   attempts: { total: number; successful: number; failed: number; avg_execution_ms: number; avg_latency_ms: number };
-  throughput_last_60s: number; stuck_jobs_count: number;
+  throughput_last_60s: number;
+  stuck_jobs_count: number;
 }
-interface FeedEvent {
-  type: string; job_id: string; job_type: string; queue_name: string;
-  status: string; prev_status: string; attempts: number; max_attempts: number;
-  error: string | null; timestamp: string;
-}
-
-const BADGE: Record<string, string> = { pending: "badge-pending", processing: "badge-processing", completed: "badge-completed", failed: "badge-failed" };
-const QUEUES = ["notifications", "media", "default"];
-const Q_ICON: Record<string, string> = { notifications: "🔔", media: "🎬", default: "📦" };
-const Q_DESC: Record<string, string> = { notifications: "Email, SMS & push notification delivery pipeline", media: "Image processing, video transcoding & thumbnail generation", default: "Data exports, scheduled reports & system maintenance" };
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null);
@@ -40,16 +36,61 @@ export default function DashboardPage() {
   const [expandedIds, setExpandedIds] = useState<Record<string, boolean>>({});
   const [feedSearch, setFeedSearch] = useState("");
   const debouncedSearch = useDebounce(feedSearch, 300);
-  const [seeding, setSeeding] = useState(false);
-  const [seedForm, setSeedForm] = useState({ count: 10, queue_name: "", failure_mode: "" });
-  const [seedMsg, setSeedMsg] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement>(null);
   const [now, setNow] = useState(() => Date.now());
   const isFetchingRef = useRef(false);
 
-  useEffect(() => { const t = setInterval(() => setNow(Date.now()), 1000); return () => clearInterval(t); }, []);
-  const fetchStats = useCallback(async () => { try { setStats(await apiService.getStats()); } catch { } }, []);
-  useEffect(() => { fetchStats(); socket.on("stats_update", setStats); return () => { socket.off("stats_update"); }; }, [fetchStats]);
+  // Job selection and content tabs state
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [selectedJobDetails, setSelectedJobDetails] = useState<{ job: any; attempts: any[] } | null>(null);
+  const [selectedTab, setSelectedTab] = useState<"details" | "payload" | "error">("details");
+  const [contentTab, setContentTab] = useState<"detail" | "log">("detail");
+
+  // Refresh clock
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, []);
+
+  const fetchStats = useCallback(async () => {
+    try {
+      setStats(await apiService.getStats());
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    fetchStats();
+    socket.on("stats_update", setStats);
+    return () => {
+      socket.off("stats_update");
+    };
+  }, [fetchStats]);
+
+  // Fetch job details on selection
+  useEffect(() => {
+    if (!selectedJobId) {
+      setSelectedJobDetails(null);
+      return;
+    }
+    let active = true;
+    const loadDetails = async () => {
+      try {
+        const data = await apiService.getJobDetails(selectedJobId);
+        if (active) {
+          setSelectedJobDetails(data);
+        }
+      } catch {}
+    };
+    loadDetails();
+    return () => {
+      active = false;
+    };
+  }, [selectedJobId]);
+
+  const handleSelectJob = (jobId: string) => {
+    setSelectedJobId(jobId);
+    setContentTab("detail");
+  };
 
   const fetchAttempts = useCallback(async (reset = false) => {
     if (isFetchingRef.current) return;
@@ -57,23 +98,19 @@ export default function DashboardPage() {
     setLoadingMore(true);
     try {
       const currentPage = reset ? 1 : Math.floor(attemptsRef.current.length / 15) + 1;
-      const res = await apiService.getAttempts({
-        limit: 15,
-        page: currentPage,
-        search: debouncedSearch
-      });
+      const res = await apiService.getAttempts({ limit: 15, page: currentPage, search: debouncedSearch });
       const newAttempts = res.attempts || [];
       const pagination = res.pagination || {};
-
-      setAttempts(prev => {
-        const nextVal = reset ? newAttempts : [...prev, ...newAttempts.filter((item: any) => !prev.some(p => p.id === item.id))];
+      setAttempts((prev) => {
+        const nextVal = reset
+          ? newAttempts
+          : [...prev, ...newAttempts.filter((item: any) => !prev.some((p) => p.id === item.id))];
         attemptsRef.current = nextVal;
         return nextVal;
       });
       setHasMore(pagination.hasMore ?? false);
       setTotalAttempts(pagination.totalRecords || 0);
-    } catch { }
-    finally {
+    } catch {} finally {
       isFetchingRef.current = false;
       setLoadingMore(false);
     }
@@ -91,609 +128,400 @@ export default function DashboardPage() {
   useEffect(() => {
     const handleEvent = (data: any) => {
       if (data.type === "attempt_update" && data.attempt) {
-        setAttempts(prev => {
-          const exists = prev.some(a => a.id === data.attempt.id);
+        setAttempts((prev) => {
+          const exists = prev.some((a) => a.id === data.attempt.id);
           let nextVal;
           if (exists) {
-            nextVal = prev.map(a => a.id === data.attempt.id ? data.attempt : a);
+            nextVal = prev.map((a) => (a.id === data.attempt.id ? data.attempt : a));
           } else {
-            setTotalAttempts(t => t + 1);
+            setTotalAttempts((t) => t + 1);
             nextVal = [data.attempt, ...prev];
           }
           attemptsRef.current = nextVal;
           return nextVal;
         });
       }
+      
+      // Handle details refresh if currently selected job gets updated
+      if (selectedJobId && (data.job_id === selectedJobId || data.attempt?.job_id === selectedJobId)) {
+        apiService.getJobDetails(selectedJobId).then(setSelectedJobDetails).catch(() => {});
+      }
     };
     socket.on("job_update", handleEvent);
     return () => {
       socket.off("job_update", handleEvent);
     };
-  }, []);
+  }, [selectedJobId]);
 
-  const handleSeed = async () => {
-    setSeeding(true); setSeedMsg(null);
-    try {
-      const body: Record<string, unknown> = { count: seedForm.count };
-      if (seedForm.queue_name) body.queue_name = seedForm.queue_name;
-      if (seedForm.failure_mode) body.failure_mode = seedForm.failure_mode;
-      const r = await apiService.seedJobs(body);
-      setSeedMsg(`✓ Seeded ${r.count} jobs`); fetchStats();
-    } catch { setSeedMsg("✗ Failed"); } finally { setSeeding(false); }
+
+
+  // Timing helper
+  const tmCls = (ms: number | null, isExec: boolean) => {
+    if (ms == null) return "";
+    if (isExec) return ms < 300 ? "tm-fast" : ms < 1000 ? "tm-mid" : "tm-slow";
+    return ms < 100 ? "tm-fast" : ms < 500 ? "tm-mid" : "tm-slow";
+  };
+
+  const formatTimeIST = (ms: number | string | null | undefined) => {
+    if (ms == null) return "—";
+    return new Date(ms).toLocaleTimeString("en-IN", {
+      hour12: false,
+      timeZone: "Asia/Kolkata",
+    }) + " IST";
+  };
+
+  const elapsed = (ms: number | string | null | undefined) => {
+    if (ms == null) return "—";
+    const start = typeof ms === "string" ? new Date(ms).getTime() : ms;
+    const s = Math.floor((now - start) / 1000);
+    if (s < 60) return `${s}s`;
+    const m = Math.floor(s / 60);
+    return `${m}m ${s % 60}s`;
+  };
+
+  const countdown = (ms: number | null) => {
+    if (ms == null) return "—";
+    const s = Math.floor((ms - now) / 1000);
+    if (s <= 0) return "imminent";
+    if (s < 60) return `in ${s}s`;
+    const m = Math.floor(s / 60);
+    return `in ${m}m ${s % 60}s`;
   };
 
   const t = stats?.jobs.total || 0;
-  const wt = (runAt: number) => { const s = Math.max(0, Math.round((now - runAt) / 1000)); return s >= 60 ? `${Math.floor(s / 60)}m ${s % 60}s` : `${s}s`; };
-  const dl = (runAt: number) => { const s = Math.max(0, Math.round((runAt - now) / 1000)); return s >= 60 ? `in ${Math.floor(s / 60)}m ${s % 60}s` : `in ${s}s`; };
-
-  const toggleExpand = (id: string) => {
-    setExpandedIds(prev => ({ ...prev, [id]: !prev[id] }));
-  };
-
-  const filteredAttempts = attempts;
 
   return (
-    <div className="page-wrap">
-      {/* ══════ HEADER ══════ */}
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-sub">Real-time system overview · All metrics update via WebSocket</p>
+    <>
+      <div className="topbar">
+        <div className="topbar-title">
+          <span className="eyebrow">Pulsar</span>
+          <span style={{ color: "var(--b2)" }}>·</span>
+          Dashboard
         </div>
-        <div className="page-actions">
-          <span className="chip"><div className="pulse-dot pulse-green" style={{ width: 7, height: 7 }} /> Live</span>
+        <div className="topbar-sep"></div>
+        <div className="tb-pill">v2.0</div>
+        <div className="topbar-sep"></div>
+        <div className="tb-live"><span className="live-dot"></span>Live</div>
+        <div className="topbar-right">
+          {(stats?.stuck_jobs_count || 0) > 0 && (
+            <Tooltip text={`${stats!.stuck_jobs_count} stuck jobs`}>
+              <div className="tb-icon warn">
+                <i className="ti ti-alert-triangle"></i>
+                <span className="badge-num">{stats!.stuck_jobs_count}</span>
+              </div>
+            </Tooltip>
+          )}
+          <Tooltip text="Refresh">
+            <div className="tb-icon" onClick={fetchStats}><i className="ti ti-refresh"></i></div>
+          </Tooltip>
+          <Tooltip text="Filter">
+            <div className="tb-icon"><i className="ti ti-filter"></i></div>
+          </Tooltip>
         </div>
       </div>
 
-      {/* ══════ ALERT ══════ */}
-      {stats && stats.stuck_jobs_count > 0 && (
-        <div className="section">
-          <div style={{ background: "var(--red-soft)", border: "1px solid var(--red)", borderRadius: "var(--radius)", padding: "18px 24px", display: "flex", alignItems: "center", gap: 16, animation: "blink 2s ease infinite" }}>
-            <span style={{ fontSize: 26 }}>⚠️</span>
-            <div>
-              <div style={{ fontWeight: 800, color: "var(--red)", fontSize: 14 }}>Stuck Jobs Detected</div>
-              <div style={{ fontSize: 12, color: "var(--text-dim)", marginTop: 2 }}>{stats.stuck_jobs_count} job(s) pending for 60s+ — possible worker capacity issue</div>
-            </div>
-          </div>
+      <div className="metric-rail">
+        <div className="mc">
+          <div className="mc-label">Total Jobs</div>
+          <div className="mc-val">{t.toLocaleString()}</div>
+          <div className="mc-sub">all time</div>
+        </div>
+        <div className="mc">
+          <div className="mc-label">Processing</div>
+          <div className="mc-val" style={{ color: "#7BA8FF" }}>{stats?.jobs.processing ?? 0}</div>
+          <div className="mc-sub" style={{ color: "var(--blue)" }}>active now</div>
+          <div className="mc-accent" style={{ background: "var(--blue)", opacity: 0.5 }}></div>
+        </div>
+        <div className="mc">
+          <div className="mc-label">Pending</div>
+          <div className="mc-val" style={{ color: "var(--t1)" }}>{stats?.jobs.pending ?? 0}</div>
+          <div className="mc-sub">awaiting worker</div>
+        </div>
+        <div className="mc">
+          <div className="mc-label">Delayed</div>
+          <div className="mc-val" style={{ color: "var(--amber)" }}>{stats?.jobs.delayed ?? 0}</div>
+          <div className="mc-sub">scheduled future</div>
+          <div className="mc-accent" style={{ background: "var(--amber)", opacity: 0.35 }}></div>
+        </div>
+        <div className="mc">
+          <div className="mc-label">Completed</div>
+          <div className="mc-val" style={{ color: "var(--green)" }}>{stats?.jobs.completed ?? 0}</div>
+          <div className="mc-sub">{t > 0 ? ((stats?.jobs.completed ?? 0) / t * 100).toFixed(1) : 0}% success</div>
+          <div className="mc-accent" style={{ background: "var(--green)", opacity: 0.35 }}></div>
+        </div>
+        <div className="mc">
+          <div className="mc-label">Failed</div>
+          <div className="mc-val" style={{ color: "var(--red)" }}>{stats?.jobs.failed ?? 0}</div>
+          <div className="mc-sub">{t > 0 ? ((stats?.jobs.failed ?? 0) / t * 100).toFixed(1) : 0}% · {stats?.stuck_jobs_count ?? 0} stuck</div>
+          <div className="mc-accent" style={{ background: "var(--red)", opacity: 0.35 }}></div>
+        </div>
+      </div>
+
+      {(stats?.stuck_jobs_count || 0) > 0 && (
+        <div className="alert-ribbon">
+          <i className="ti ti-alert-triangle"></i>
+          <span><strong>{stats!.stuck_jobs_count} stuck jobs</strong> — pending 60s+ · possible worker capacity issue</span>
+          <button className="ar-dismiss" onClick={(e) => (e.currentTarget.parentElement!.style.display = 'none')}><i className="ti ti-x"></i></button>
         </div>
       )}
 
-      {/* ══════ ROW 1: HERO STATS ══════ */}
-      <div className="section">
-        <div className="section-label">Job Status Overview</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 16 }}>
-          {[
-            { k: "Pending", v: stats?.jobs.pending ?? 0, c: "var(--text-dim)", bar: "var(--text-faint)", tip: "Jobs queued and waiting for a worker" },
-            { k: "Processing", v: stats?.jobs.processing ?? 0, c: "var(--accent)", bar: "var(--accent)", tip: "Jobs currently being executed by workers" },
-            { k: "Completed", v: stats?.jobs.completed ?? 0, c: "var(--green)", bar: "var(--green)", tip: "Successfully completed jobs" },
-            { k: "Failed", v: stats?.jobs.failed ?? 0, c: "var(--red)", bar: "var(--red)", tip: "Jobs that exhausted all retry attempts" },
-          ].map(s => (
-            <Tooltip key={s.k} text={s.tip}>
-              <div className="hero-stat" style={{ width: "100%" }}>
-                <div className="hero-stat-label">
-                  <div className="pulse-dot" style={{ background: s.bar, width: 8, height: 8 }} />
-                  {s.k}
-                </div>
-                <div className="hero-stat-value" style={{ color: s.c }}><AnimNum value={s.v} /></div>
-                <div className="hero-stat-sub">{t > 0 ? Math.round((s.v / t) * 100) : 0}% of {t.toLocaleString()} total jobs</div>
-                <div className="hero-stat-bar" style={{ background: s.bar, opacity: 0.15 }} />
-              </div>
-            </Tooltip>
-          ))}
-        </div>
-      </div>
-
-      {/* ══════ ROW 2: DISTRIBUTION ══════ */}
-      <div className="section">
-        <div className="section-label">Job Distribution</div>
-        <div className="card">
-          <div className="card-body" style={{ padding: "20px 24px" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
-              <span style={{ fontSize: 13, fontWeight: 700 }}>Status Breakdown</span>
-              <span className="chip">{t.toLocaleString()} total</span>
-            </div>
-            {(() => {
-              const segs = [
-                { v: stats?.jobs.pending ?? 0, c: "var(--text-faint)", label: "Pending" },
-                { v: stats?.jobs.processing ?? 0, c: "var(--accent)", label: "Processing" },
-                { v: stats?.jobs.completed ?? 0, c: "var(--green)", label: "Completed" },
-                { v: stats?.jobs.failed ?? 0, c: "var(--red)", label: "Failed" },
-              ].filter(s => s.v > 0);
-              const visibleSegs = t > 0 ? segs : [];
-              return (
-                <div style={{ height: 10, borderRadius: 5, overflow: "hidden", background: "var(--bg-inset)", display: "flex", gap: 2, marginBottom: 16 }}>
-                  {visibleSegs.map((s, i) => {
-                    const isFirst = i === 0;
-                    const isLast = i === visibleSegs.length - 1;
-                    const borderRadius = `${isFirst ? 4 : 0}px ${isLast ? 4 : 0}px ${isLast ? 4 : 0}px ${isFirst ? 4 : 0}px`;
-                    const pct = `${(s.v / t) * 100}%`;
-                    return (
-                      <Tooltip key={s.label} text={`${s.label}: ${s.v.toLocaleString()} job${s.v !== 1 ? 's' : ''} (${Math.round((s.v / t) * 100)}%)`} style={{ width: pct, transition: "width .5s", height: "100%" }}>
-                        <div style={{ width: "100%", height: "100%", background: s.c, borderRadius, cursor: "default" }} />
-                      </Tooltip>
-                    );
-                  })}
-                </div>
-              );
-            })()}
-            <div style={{ display: "flex", gap: 28 }}>
-              {[
-                { k: "Pending", v: stats?.jobs.pending ?? 0, c: "var(--text-faint)" },
-                { k: "Processing", v: stats?.jobs.processing ?? 0, c: "var(--accent)" },
-                { k: "Completed", v: stats?.jobs.completed ?? 0, c: "var(--green)" },
-                { k: "Failed", v: stats?.jobs.failed ?? 0, c: "var(--red)" },
-              ].map(s => (
-                <div key={s.k} style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 12 }}>
-                  <div style={{ width: 10, height: 10, borderRadius: 3, background: s.c }} />
-                  <span style={{ color: "var(--text-dim)" }}>{s.k}</span>
-                  <span style={{ fontWeight: 700 }}>{s.v.toLocaleString()}</span>
-                </div>
-              ))}
-            </div>
+      <div className="body-split">
+        <div className="content-area" style={{ borderRight: "1px solid var(--b1)" }}>
+          <div className="content-top">
+            <span className={`content-tab ${contentTab === "detail" ? "on" : ""}`} onClick={() => setContentTab("detail")}>Job Detail</span>
+            <span className={`content-tab ${contentTab === "log" ? "on" : ""}`} onClick={() => setContentTab("log")}>Execution Log</span>
           </div>
-        </div>
-      </div>
 
-      {/* ══════ ROW 3: PERFORMANCE (accordion) ══════ */}
-      <div className="section">
-        <div className="section-label">Performance & Throughput</div>
-        <Accordion title="Performance Metrics" icon="📈" desc="Throughput, execution time, and queue latency" badge={<span className="acc-badge">{stats?.throughput_last_60s ?? 0} jobs/min</span>} defaultOpen>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 14 }}>
-            {[
-              { l: "Throughput / 60s", v: stats?.throughput_last_60s ?? 0, u: "jobs", c: "var(--green)", tip: "Jobs processed in the last 60 seconds" },
-              { l: "Avg Execution", v: stats?.attempts.avg_execution_ms ?? 0, u: "ms", c: "var(--text-primary)", tip: "Average time a worker takes to process a job" },
-              { l: "Avg Queue Latency", v: stats?.attempts.avg_latency_ms ?? 0, u: "ms", c: "var(--text-primary)", tip: "Average time a job waits before being picked up" },
-              { l: "Total Attempts", v: stats?.attempts.total ?? 0, u: "", c: "var(--text-primary)", tip: "Total number of execution attempts across all jobs" },
-            ].map(m => (
-              <Tooltip key={m.l} text={m.tip}>
-                <div className="inset" style={{ width: "100%", textAlign: "center" }}>
-                  <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 10 }}>{m.l}</div>
-                  <div style={{ fontSize: 28, fontWeight: 800, color: m.c, fontVariantNumeric: "tabular-nums", letterSpacing: "-.03em" }}>
-                    <AnimNum value={Math.round(m.v)} />
-                    {m.u && <span style={{ fontSize: 12, fontWeight: 500, marginLeft: 3, color: "var(--text-faint)" }}>{m.u}</span>}
+          <div className="detail-panel">
+            {contentTab === "detail" && (
+              <>
+                {!selectedJobDetails ? (
+                  <div className="empty-state">
+                    <div className="empty-icon"><i className="ti ti-click"></i></div>
+                    <div className="empty-label">Select a job to inspect</div>
+                    <div className="empty-sub">Click any job row in the queue lanes</div>
                   </div>
-                </div>
-              </Tooltip>
-            ))}
-          </div>
-        </Accordion>
-      </div>
-
-      {/* ══════ ROW 4: OUTBOX (accordion, collapsed) ══════ */}
-      <div className="section">
-        <div className="section-label">Transactional Outbox</div>
-        <Accordion title="Outbox Relay Pipeline" icon="📡" desc="Atomic relay between PostgreSQL and Redis" badge={<span className="acc-badge">{stats?.outbox.total || 0} events</span>}>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 14 }}>
-            {[
-              { l: "Pipeline Pending", v: stats?.outbox.pending ?? 0, c: "var(--text-secondary)" },
-              { l: "Relayed Successfully", v: stats?.outbox.processed ?? 0, c: "var(--green)" },
-              { l: "Relay Failed", v: stats?.outbox.failed ?? 0, c: "var(--red)" },
-            ].map(m => (
-              <div key={m.l} className="inset" style={{ textAlign: "center" }}>
-                <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text-faint)", textTransform: "uppercase", letterSpacing: ".06em", marginBottom: 8 }}>{m.l}</div>
-                <div style={{ fontSize: 28, fontWeight: 800, color: m.c }}><AnimNum value={m.v} /></div>
-              </div>
-            ))}
-          </div>
-        </Accordion>
-      </div>
-
-      {/* ══════ ROW 5: QUEUE LANES (accordion, open) ══════ */}
-      <div className="section">
-        <div className="section-label">Queue Health</div>
-        <Accordion title="Queue Lanes" icon="🚦" desc="Live depths, processing counts, and delayed jobs" badge={<span className="acc-badge">{QUEUES.length} queues</span>} defaultOpen>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 16 }}>
-            {QUEUES.map(q => {
-              const depth = stats?.queues.depths[q] ?? 0;
-              const delayed = stats?.queues.delayed[q] ?? 0;
-              const proc = stats?.queues.processing[q] ?? [];
-              const ready = stats?.queues.readyJobs[q] ?? [];
-              const delItems = stats?.queues.delayedJobs[q] ?? [];
-              const tot = depth + delayed + proc.length;
-              const hasAny = tot > 0;
-
-              return (
-                <div key={q} className="queue-card">
-                  <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 20 }}>
-                    <div className="queue-card-icon">{Q_ICON[q]}</div>
-                    <div>
-                      <div className="queue-card-name">{q}</div>
-                      <div className="queue-card-desc">{Q_DESC[q]}</div>
-                    </div>
-                  </div>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 16 }}>
-                    <Tooltip text="Jobs actively being processed by workers">
-                      <div className="queue-mini" style={{ width: "100%" }}>
-                        <div className="queue-mini-label">Active</div>
-                        <div className="queue-mini-val" style={{ color: proc.length > 0 ? "var(--accent)" : "var(--text-faint)" }}>{proc.length}</div>
+                ) : (
+                  <>
+                    {/* HERO */}
+                    <div className="detail-hero">
+                      <div className={`detail-hero-icon`} style={
+                        selectedJobDetails.job.status === "processing"
+                          ? { background: "var(--blue-dim)", border: "1px solid var(--blue-ring)", color: "#7BA8FF" }
+                          : selectedJobDetails.job.status === "pending"
+                          ? { background: "var(--card3)", border: "1px solid var(--b2)", color: "var(--t2)" }
+                          : selectedJobDetails.job.status === "delayed"
+                          ? { background: "var(--amber-dim)", border: "1px solid var(--amber-ring)", color: "var(--amber)" }
+                          : { background: "var(--red-dim)", border: "1px solid var(--red-ring)", color: "var(--red)" }
+                      }>
+                        <i className="ti ti-activity" style={{ fontSize: 17 }}></i>
                       </div>
-                    </Tooltip>
-                    <Tooltip text="Jobs ready and waiting to be picked up">
-                      <div className="queue-mini" style={{ width: "100%" }}>
-                        <div className="queue-mini-label">Ready</div>
-                        <div className="queue-mini-val" style={{ color: depth > 0 ? "var(--text-primary)" : "var(--text-faint)" }}>{depth}</div>
-                      </div>
-                    </Tooltip>
-                    <Tooltip text="Jobs scheduled for future execution">
-                      <div className="queue-mini" style={{ width: "100%" }}>
-                        <div className="queue-mini-label">Delayed</div>
-                        <div className="queue-mini-val" style={{ color: delayed > 0 ? "var(--red)" : "var(--text-faint)" }}>{delayed}</div>
-                      </div>
-                    </Tooltip>
-                  </div>
-                  <div style={{ marginBottom: hasAny ? 14 : 0 }}>
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-faint)", marginBottom: 5, fontWeight: 600 }}>
-                      <span>CAPACITY</span><span>{tot} JOBS</span>
-                    </div>
-                    {(() => {
-                      const capSegs = [
-                        { v: proc.length, c: "var(--accent)", label: "Processing" },
-                        { v: depth, c: "var(--text-faint)", label: "Ready" },
-                        { v: delayed, c: "var(--red)", label: "Delayed", opacity: 0.7 },
-                      ].filter(s => s.v > 0);
-                      return (
-                        <div className="capacity-bar">
-                          {capSegs.map((s, i) => {
-                            const isFirst = i === 0;
-                            const isLast = i === capSegs.length - 1;
-                            const borderRadius = `${isFirst ? 2 : 0}px ${isLast ? 2 : 0}px ${isLast ? 2 : 0}px ${isFirst ? 2 : 0}px`;
-                            const pct = `${(s.v / Math.max(tot, 1)) * 100}%`;
-                            return (
-                              <Tooltip key={s.label} text={`${s.label}: ${s.v} job${s.v !== 1 ? 's' : ''} (${Math.round((s.v / Math.max(tot, 1)) * 100)}%)`} style={{ width: pct, height: "100%", transition: "width .5s var(--ease)" }}>
-                                <div className="capacity-seg" style={{ width: "100%", height: "100%", background: s.c, borderRadius, ...(s.opacity ? { opacity: s.opacity } : {}), cursor: "default" }} />
-                              </Tooltip>
-                            );
-                          })}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 12 }}>
-                    {/* Active & Pending Queue Accordion */}
-                    <Accordion 
-                      title="Active & Ready Queue" 
-                      badge={<span className="acc-badge" style={{ background: "var(--accent-soft)", color: "var(--text-primary)" }}>{proc.length + depth}</span>}
-                      defaultOpen={proc.length + depth > 0}
-                    >
-                      {proc.length + ready.length === 0 ? (
-                        <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-faint)", fontStyle: "italic", padding: "8px 0" }}>
-                          No active or ready jobs
-                        </div>
-                      ) : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
-                          {/* Processing/Active Jobs (Green shaded box) */}
-                          {proc.map(j => {
-                            const elapsed = j.startedAt ? wt(j.startedAt) : "just now";
-                            return (
-                              <div key={j.id} style={{
-                                background: "var(--green-soft)",
-                                border: "1px solid rgba(52, 211, 153, 0.2)",
-                                borderRadius: "var(--radius-sm)",
-                                padding: "10px 12px",
-                                display: "flex",
-                                flexDirection: "column",
-                                gap: 4,
-                                color: "var(--green)"
-                              }}>
-                                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: "12px" }}>
-                                  <span>Job ID: #{j.id}</span>
-                                  <span style={{ fontSize: "10px", textTransform: "uppercase", background: "rgba(52, 211, 153, 0.15)", padding: "2px 6px", borderRadius: 4, fontWeight: 800 }}>Processing</span>
-                                </div>
-                                <div style={{ fontSize: "11px", color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: 2 }}>
-                                  <div>Attempt: <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>#{j.attempts}</span></div>
-                                  <div>Worker: <code style={{ color: "var(--text-primary)", background: "var(--bg-inset)", padding: "1px 4px", borderRadius: 3, fontSize: "10.5px" }}>{j.workerId || "unknown"}</code> {j.workerHostname ? `(${j.workerHostname})` : ""}</div>
-                                  <div>Running for: <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{elapsed}</span></div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                          
-                          {/* Waiting/Pending/Ready Jobs (Grey shaded box) */}
-                          {ready.map((r, i) => (
-                            <div key={`${r.id}-${i}`} style={{
-                              background: "var(--bg-inset)",
-                              border: "1px solid var(--border)",
-                              borderRadius: "var(--radius-sm)",
-                              padding: "10px 12px",
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 4,
-                              color: "var(--text-secondary)"
-                            }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: "12px" }}>
-                                <span>Job ID: #{r.id}</span>
-                                <span style={{ fontSize: "10px", textTransform: "uppercase", background: "var(--border)", padding: "2px 6px", borderRadius: 4, color: "var(--text-dim)", fontWeight: 800 }}>Ready</span>
-                              </div>
-                              <div style={{ fontSize: "11px", color: "var(--text-dim)", display: "flex", flexDirection: "column", gap: 2 }}>
-                                <div>Waiting time: <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{wt(r.runAt)}</span></div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </Accordion>
-
-                    {/* Delayed Queue Accordion */}
-                    <Accordion 
-                      title="Delayed Queue" 
-                      badge={<span className="acc-badge" style={{ background: "var(--red-soft)", color: "var(--red)" }}>{delayed}</span>}
-                      defaultOpen={delayed > 0}
-                    >
-                      {delItems.length === 0 ? (
-                        <div style={{ textAlign: "center", fontSize: 12, color: "var(--text-faint)", fontStyle: "italic", padding: "8px 0" }}>
-                          No delayed jobs
-                        </div>
-                      ) : (
-                        <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 4 }}>
-                          {delItems.map((d, i) => (
-                            <div key={`${d.id}-${i}`} style={{
-                              background: "var(--red-soft)",
-                              border: "1px solid rgba(248, 113, 113, 0.2)",
-                              borderRadius: "var(--radius-sm)",
-                              padding: "10px 12px",
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: 4,
-                              color: "var(--red)"
-                            }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontWeight: 700, fontSize: "12px" }}>
-                                <span>Job ID: #{d.id}</span>
-                                <span style={{ fontSize: "10px", textTransform: "uppercase", background: "rgba(248, 113, 113, 0.15)", padding: "2px 6px", borderRadius: 4, fontWeight: 800 }}>Delayed</span>
-                              </div>
-                              <div style={{ fontSize: "11px", color: "var(--text-secondary)", display: "flex", flexDirection: "column", gap: 2 }}>
-                                <div>Attempts made: <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{d.attempts}</span></div>
-                                <div>Remaining delay: <span style={{ fontWeight: 600, color: "var(--text-primary)" }}>{dl(d.runAt)}</span></div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </Accordion>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </Accordion>
-      </div>
-
-      {/* ══════ ROW 6: SEED JOBS (accordion, collapsed) ══════ */}
-      <div className="section">
-        <div className="section-label">Tools</div>
-        <Accordion title="Seed Test Jobs" icon="⚡" desc="Inject test jobs into the processing pipeline">
-          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-            {/* Row 1: Slider (full width) */}
-            <div>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
-                <label className="label" style={{ marginBottom: 0 }}>Job Count</label>
-                <span style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", fontVariantNumeric: "tabular-nums" }}>{seedForm.count}</span>
-              </div>
-              <input type="range" min={1} max={100} value={seedForm.count} onChange={e => setSeedForm(f => ({ ...f, count: +e.target.value }))} style={{ width: "100%" }} />
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "var(--text-faint)", marginTop: 4 }}><span>1</span><span>50</span><span>100</span></div>
-            </div>
-
-            {/* Row 2: Queue + Failure Mode (side by side) */}
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
-              <div>
-                <label className="label">Target Queue</label>
-                <select className="select" value={seedForm.queue_name} onChange={e => setSeedForm(f => ({ ...f, queue_name: e.target.value }))}>
-                  <option value="">Random</option>
-                  {QUEUES.map(q => <option key={q} value={q}>{q}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="label">Failure Mode</label>
-                <select className="select" value={seedForm.failure_mode} onChange={e => setSeedForm(f => ({ ...f, failure_mode: e.target.value }))}>
-                  <option value="">Random</option>
-                  <option value="succeed">Always Succeed</option>
-                  <option value="fail">Always Fail</option>
-                  <option value="probably_fail">Probabilistic</option>
-                </select>
-              </div>
-            </div>
-
-            {/* Row 3: Button (full width) */}
-            <button className="btn btn-primary" onClick={handleSeed} disabled={seeding} style={{ height: 44, width: "100%", fontSize: 14 }}>
-              {seeding ? "Seeding..." : `⚡ Seed ${seedForm.count} Jobs`}
-            </button>
-            {seedMsg && <p style={{ fontSize: 12, color: seedMsg.startsWith("✓") ? "var(--green)" : "var(--red)", textAlign: "center" }}>{seedMsg}</p>}
-          </div>
-        </Accordion>
-      </div>
-
-      {/* ══════ ROW 7: LIVE FEED (accordion, open, with search) ══════ */}
-      <div className="section">
-        <div className="section-label">System Logs</div>
-        <Accordion
-          title="Job Execution History"
-          icon={<div className="pulse-dot pulse-green" style={{ width: 9, height: 9 }} />}
-          desc="Real-time job attempts, latencies, and execution logs"
-          badge={totalAttempts > 0 ? <span className="acc-badge">{totalAttempts} attempts</span> : undefined}
-          defaultOpen
-        >
-          <div style={{ marginBottom: 14 }}>
-            <SearchInput placeholder="Search logs by job type, queue, ID, worker, or error..." value={feedSearch} onChange={setFeedSearch} debounceMs={0} />
-          </div>
-          <div ref={feedRef} style={{
-            background: "var(--bg-inset)",
-            borderRadius: "var(--radius)",
-            border: "1px solid var(--border)",
-            padding: "8px",
-            fontFamily: "'IBM Plex Mono', 'JetBrains Mono', monospace",
-            color: "var(--text-secondary)",
-            fontSize: "12.5px",
-            maxHeight: "480px",
-            overflowY: "auto",
-            display: "flex",
-            flexDirection: "column"
-          }}>
-            {filteredAttempts.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "50px 0", color: "var(--text-faint)", fontSize: 13 }}>
-                {feedSearch ? "No matching log entries" : "Waiting for job execution attempts..."}
-              </div>
-            ) : filteredAttempts.map((att) => {
-              const startedTime = formatTimeIST(att.started_at) + " IST";
-              const isExpanded = !!expandedIds[att.id];
-              return (
-                <div key={att.id} className="feed-item" style={{
-                  padding: "10px 12px",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: "4px"
-                }}>
-                  {/* Log Header Row */}
-                  <div
-                    onClick={() => toggleExpand(att.id)}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      cursor: "pointer",
-                      userSelect: "none",
-                      gap: "8px",
-                      flexWrap: "wrap",
-                      width: "100%"
-                    }}
-                  >
-                    <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
-                      {/* Collapse indicator */}
-                      <span style={{ color: "var(--text-dim)", fontSize: "10px", width: "12px", display: "inline-block" }}>
-                        {isExpanded ? "▼" : "▶"}
-                      </span>
-                      {/* Timestamp */}
-                      <span style={{ color: "var(--text-dim)", fontFamily: "monospace" }}>
-                        [{startedTime}]
-                      </span>
-                      {/* Queue */}
-                      <span style={{ color: "var(--blue)", fontWeight: 600 }}>
-                        [{att.queue_name}]
-                      </span>
-                      {/* Attempt Number */}
-                      <span style={{ color: "var(--text-dim)", fontFamily: "monospace" }}>
-                        (Attempt #{att.business_attempt}{att.infra_attempt > 0 ? `, Infra #${att.infra_attempt}` : ''})
-                      </span>
-                      {/* Job Type and ID */}
-                      <span style={{ color: "var(--text-primary)", fontWeight: 600 }}>
-                        {att.job_type}
-                      </span>
-                      <Tooltip text={`Full Job ID: ${att.job_id}`}>
-                        <span style={{ color: "var(--text-dim)", fontFamily: "monospace", fontSize: "11px" }}>
-                          #{String(att.job_id).slice(0, 8)}
-                        </span>
-                      </Tooltip>
-                      {/* Timing metrics if finished */}
-                      {att.status === "completed" && att.execution_time_ms !== null && (
-                        <span style={{ color: "var(--green)", fontSize: "11px" }}>
-                          ✓ finished in {att.execution_time_ms}ms
-                        </span>
-                      )}
-                      {att.status === "failed" && (
-                        <span style={{ color: "var(--red)", fontSize: "11px", fontWeight: "bold" }}>
-                          ✗ failed
-                        </span>
-                      )}
-                      {att.status === "processing" && (
-                        <span style={{ color: "var(--accent)", fontSize: "11px", display: "inline-flex", alignItems: "center", gap: "6px" }}>
-                          <span className="spinner" style={{ width: "10px", height: "10px", borderWidth: "1px" }} /> running...
-                        </span>
-                      )}
-                    </div>
-
-                    <div style={{ display: "flex", gap: "12px", alignItems: "center", color: "var(--text-dim)", fontSize: "11px", fontFamily: "monospace" }}>
-                      <span>Worker: {att.worker_id}</span>
-                    </div>
-                  </div>
-
-                  {/* Expandable Details Container */}
-                  {isExpanded && (
-                    <div style={{
-                      marginTop: "10px",
-                      padding: "16px",
-                      background: "var(--bg-card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: "var(--radius-sm)",
-                      color: "var(--text-secondary)",
-                      fontSize: "12px",
-                      animation: "fadeIn 0.2s ease-out"
-                    }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "16px", marginBottom: "16px" }}>
-                        <div>
-                          <span style={{ color: "var(--text-dim)", fontWeight: "bold", display: "block", marginBottom: "6px", fontSize: "11px", textTransform: "uppercase" }}>Worker Metadata</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                            <div>ID: <code style={{ color: "var(--text-primary)", background: "var(--bg-inset)", padding: "2px 4px", borderRadius: "3px" }}>{att.worker_id}</code></div>
-                            <div>Hostname: <code style={{ color: "var(--text-primary)", background: "var(--bg-inset)", padding: "2px 4px", borderRadius: "3px" }}>{att.worker_hostname || "N/A"}</code></div>
-                            <div>Process PID: <code style={{ color: "var(--text-primary)", background: "var(--bg-inset)", padding: "2px 4px", borderRadius: "3px" }}>{att.worker_pid || "N/A"}</code></div>
-                          </div>
-                        </div>
-
-                        <div>
-                          <span style={{ color: "var(--text-dim)", fontWeight: "bold", display: "block", marginBottom: "6px", fontSize: "11px", textTransform: "uppercase" }}>Timing & Latency</span>
-                          <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                            <div>Scheduled: <span style={{ color: "var(--text-primary)" }}>{att.scheduled_at ? formatTimeIST(att.scheduled_at) + " IST" : "N/A"}</span></div>
-                            <div>Started At: <span style={{ color: "var(--text-primary)" }}>{formatTimeIST(att.started_at)} IST</span></div>
-                            <div>Finished At: <span style={{ color: "var(--text-primary)" }}>{att.finished_at ? formatTimeIST(att.finished_at) + " IST" : "Running..."}</span></div>
-                            <div>Queue Wait Time: <span style={{ color: att.queue_latency_ms > 10000 ? "var(--red)" : "var(--green)" }}>{att.queue_latency_ms !== null ? `${att.queue_latency_ms}ms` : "N/A"}</span></div>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Payload */}
-                      <div style={{ marginBottom: "14px" }}>
-                        <span style={{ color: "var(--text-dim)", fontWeight: "bold", display: "block", marginBottom: "6px", fontSize: "11px", textTransform: "uppercase" }}>Job Input Payload</span>
-                        <pre style={{
-                          background: "var(--bg-inset)",
-                          padding: "12px",
-                          borderRadius: "6px",
-                          border: "1px solid var(--border)",
-                          overflowX: "auto",
-                          fontSize: "11.5px",
-                          color: "var(--text-primary)",
-                          maxHeight: "200px"
-                        }}>
-                          {JSON.stringify(att.payload, null, 2)}
-                        </pre>
-                      </div>
-
-                      {/* Failure / Error display */}
-                      {att.status === "failed" && (
-                        <div style={{ borderTop: "1px solid var(--red)", paddingTop: "14px", marginTop: "14px" }}>
-                          <span style={{ color: "var(--red)", fontWeight: "bold", display: "block", marginBottom: "6px", fontSize: "11px", textTransform: "uppercase" }}>Error Message</span>
-                          <div style={{ color: "var(--red)", fontWeight: "bold", marginBottom: "10px" }}>{att.error}</div>
-                          {att.stack_trace && (
-                            <>
-                              <span style={{ color: "var(--text-dim)", fontWeight: "bold", display: "block", marginBottom: "6px", fontSize: "11px", textTransform: "uppercase" }}>Stack Trace</span>
-                              <pre style={{
-                                background: "var(--bg-inset)",
-                                padding: "12px",
-                                borderRadius: "6px",
-                                border: "1px solid var(--border)",
-                                overflowX: "auto",
-                                fontSize: "11px",
-                                color: "var(--red)",
-                                maxHeight: "180px"
-                              }}>
-                                {att.stack_trace}
-                              </pre>
-                            </>
+                      <div className="detail-hero-body">
+                        <div className="detail-type">{selectedJobDetails.job.job_type}</div>
+                        <div className="detail-meta-row">
+                          <span className={`status-badge-lg ${
+                            selectedJobDetails.job.status === "processing" ? "sb-proc" :
+                            selectedJobDetails.job.status === "pending" ? "sb-pend" :
+                            selectedJobDetails.job.status === "delayed" ? "sb-delay" : "sb-fail"
+                          }`}>
+                            <span className={`sb-dot ${selectedJobDetails.job.status === "processing" ? "pulse" : ""}`} style={{
+                              background: selectedJobDetails.job.status === "processing" ? "#7BA8FF" :
+                                          selectedJobDetails.job.status === "pending" ? "var(--t3)" :
+                                          selectedJobDetails.job.status === "delayed" ? "var(--amber)" : "var(--red)"
+                            }}></span>
+                            {selectedJobDetails.job.status}
+                          </span>
+                          <span className="detail-id">#{selectedJobDetails.job.id.slice(0, 8)}</span>
+                          <span className="detail-queue-tag">{selectedJobDetails.job.queue_name}</span>
+                          {selectedJobDetails.attempts.length > 0 && selectedJobDetails.attempts[0].queue_latency_ms != null && (
+                            <span className={`tm-chip ${tmCls(selectedJobDetails.attempts[0].queue_latency_ms, false)}`}>
+                              Q·wait {selectedJobDetails.attempts[0].queue_latency_ms}ms
+                            </span>
+                          )}
+                          {selectedJobDetails.attempts.length > 0 && selectedJobDetails.attempts[0].execution_time_ms != null && (
+                            <span className={`tm-chip ${tmCls(selectedJobDetails.attempts[0].execution_time_ms, true)}`}>
+                              Exec {selectedJobDetails.attempts[0].execution_time_ms}ms
+                            </span>
+                          )}
+                          {selectedJobDetails.job.status === "processing" && selectedJobDetails.attempts[0]?.started_at && (
+                            <span className="tm-chip tm-live">Running {elapsed(selectedJobDetails.attempts[0].started_at)}</span>
                           )}
                         </div>
-                      )}
+                      </div>
                     </div>
-                  )}
-                </div>
-              );
-            })}
 
-            {/* Infinite Scroll Trigger */}
-            <InfiniteScroll
-              onIntersect={loadMore}
-              hasMore={hasMore}
-              isLoading={loadingMore}
-              rootRef={feedRef}
+                    {/* TABS CARD */}
+                    <div className="d-card">
+                      <div className="d-tabs">
+                        <div className={`d-tab ${selectedTab === "details" ? "on" : ""}`} onClick={() => setSelectedTab("details")}>Details</div>
+                        <div className={`d-tab ${selectedTab === "payload" ? "on" : ""}`} onClick={() => setSelectedTab("payload")}>Payload</div>
+                        <div className={`d-tab ${selectedTab === "error" ? "on" : ""}`} style={selectedJobDetails.job.last_error ? { color: "var(--red)" } : {}} onClick={() => setSelectedTab("error")}>Error</div>
+                      </div>
+
+                      {/* DETAILS PANEL */}
+                      <div className={`d-panel ${selectedTab === "details" ? "on" : ""}`}>
+                        <div className="kv-grid-3">
+                          <div className="kv-item"><div className="kv-k">Job ID</div><div className="kv-v" style={{ fontSize: 10.5 }}>{selectedJobDetails.job.id}</div></div>
+                          <div className="kv-item"><div className="kv-k">Queue</div><div className="kv-v">{selectedJobDetails.job.queue_name}</div></div>
+                          <div className="kv-item"><div className="kv-k">Attempt</div><div className="kv-v">#{selectedJobDetails.job.attempts} of {selectedJobDetails.job.max_attempts}</div></div>
+                        </div>
+
+                        <div style={{ margin: "14px 0 6px" }}>
+                          <div className="kv-k" style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: ".09em", color: "var(--t2)", marginBottom: 8 }}>Attempt history</div>
+                          <div className="att-track">
+                            {Array.from({ length: Math.max(selectedJobDetails.job.attempts || 0, 1) }).map((_, i) => {
+                              const isCur = i === (selectedJobDetails.job.attempts || 1) - 1;
+                              const col = selectedJobDetails.job.status === "failed" ? "var(--red)" : selectedJobDetails.job.status === "processing" ? "var(--blue)" : "var(--green)";
+                              return <div key={i} className="att-pip" style={{ background: isCur ? col : "var(--b2)" }}></div>;
+                            })}
+                            <div className="att-pip" style={{ background: "var(--b1)" }}></div>
+                            <div className="att-pip" style={{ background: "var(--b1)" }}></div>
+                          </div>
+                        </div>
+
+                        <div className="kv-grid-2" style={{ marginTop: 14 }}>
+                          <div className="kv-item"><div className="kv-k">Scheduled</div><div className="kv-v">{formatTimeIST(selectedJobDetails.job.run_at)}</div></div>
+                          <div className="kv-item"><div className="kv-k">Started</div><div className="kv-v">{selectedJobDetails.attempts[0] ? formatTimeIST(selectedJobDetails.attempts[0].started_at) : "—"}</div></div>
+                          <div className="kv-item">
+                            <div className="kv-k">Queue wait</div>
+                            <div className="kv-v">
+                              <span className={selectedJobDetails.attempts[0] ? tmCls(selectedJobDetails.attempts[0].queue_latency_ms, false) : ""}>
+                                {selectedJobDetails.attempts[0] && selectedJobDetails.attempts[0].queue_latency_ms != null ? `${selectedJobDetails.attempts[0].queue_latency_ms}ms` : "—"}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="kv-item">
+                            <div className="kv-k">Exec time</div>
+                            <div className="kv-v">
+                              {selectedJobDetails.attempts[0] && selectedJobDetails.attempts[0].execution_time_ms != null ? (
+                                <span className={tmCls(selectedJobDetails.attempts[0].execution_time_ms, true)}>
+                                  {selectedJobDetails.attempts[0].execution_time_ms}ms
+                                </span>
+                              ) : selectedJobDetails.job.status === "processing" ? (
+                                <span className="tm-live">running…</span>
+                              ) : "—"}
+                            </div>
+                          </div>
+                          <div className="kv-item"><div className="kv-k">Worker</div><div className="kv-v">{selectedJobDetails.attempts[0]?.worker_id || "—"}</div></div>
+                          <div className="kv-item">
+                            <div className="kv-k">Host · PID</div>
+                            <div className="kv-v">
+                              {selectedJobDetails.attempts[0]?.worker_hostname || "—"} · {selectedJobDetails.attempts[0]?.worker_pid || "—"}
+                            </div>
+                          </div>
+                          {selectedJobDetails.job.status === "delayed" && (
+                            <div className="kv-item"><div className="kv-k">Runs</div><div className="kv-v" style={{ color: "var(--amber)" }}>{countdown(selectedJobDetails.job.run_at)}</div></div>
+                          )}
+                          {selectedJobDetails.job.infra_attempts > 0 && (
+                            <div className="kv-item"><div className="kv-k">Infra attempt</div><div className="kv-v">#{selectedJobDetails.job.infra_attempts}</div></div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* PAYLOAD PANEL */}
+                      <div className={`d-panel ${selectedTab === "payload" ? "on" : ""}`}>
+                        <div className="kv-k" style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: ".09em", color: "var(--t2)", marginBottom: 10 }}>Input Payload</div>
+                        <pre className="code-block">{JSON.stringify(selectedJobDetails.job.payload || {}, null, 2)}</pre>
+                      </div>
+
+                      {/* ERROR PANEL */}
+                      <div className={`d-panel ${selectedTab === "error" ? "on" : ""}`}>
+                        {selectedJobDetails.job.last_error ? (
+                          <>
+                            <div className="kv-k" style={{ fontSize: 9.5, textTransform: "uppercase", letterSpacing: ".09em", color: "var(--red)", marginBottom: 10 }}>Error Message</div>
+                            <pre className="err-block">
+                              {selectedJobDetails.job.last_error}
+                              {selectedJobDetails.attempts[0]?.stack_trace ? `\n\n${selectedJobDetails.attempts[0].stack_trace}` : ""}
+                            </pre>
+                          </>
+                        ) : (
+                          <div style={{ color: "var(--t2)", fontSize: 12, padding: "8px 0" }}>No error recorded.</div>
+                        )}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {contentTab === "log" && (
+              <>
+                {!selectedJobDetails ? (
+                  <div className="empty-state">
+                    <div className="empty-icon"><i className="ti ti-click"></i></div>
+                    <div className="empty-label">Select a job to inspect</div>
+                    <div className="empty-sub">Click any job row in the queue lanes</div>
+                  </div>
+                ) : (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                    <div className="d-card-title" style={{ fontSize: 12, color: "var(--t0)" }}>
+                      <i className="ti ti-receipt"></i> Execution Attempts Log for Job #{selectedJobDetails.job.id.slice(0, 8)}
+                    </div>
+                    {selectedJobDetails.attempts.length === 0 ? (
+                      <div style={{ color: "var(--t2)", fontSize: 12, padding: "8px 0" }}>No execution attempts recorded yet.</div>
+                    ) : (
+                      selectedJobDetails.attempts.map((att, index) => (
+                        <div key={att.id} className="d-card" style={{ borderLeft: att.status === "failed" ? "3px solid var(--red)" : att.status === "completed" ? "3px solid var(--green)" : "3px solid var(--blue)" }}>
+                          <div className="d-card-head" style={{ padding: "10px 14px" }}>
+                            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                              <span className="mini-badge" style={{ background: "var(--card3)", color: "var(--t1)", border: "1px solid var(--b2)" }}>
+                                Attempt #{selectedJobDetails.attempts.length - index}
+                              </span>
+                              <span className={`mini-badge ${
+                                att.status === "completed" ? "mb-done" : att.status === "failed" ? "mb-fail" : "mb-proc"
+                              }`}>{att.status}</span>
+                            </div>
+                            <span style={{ fontSize: 10, color: "var(--t2)", fontFamily: "var(--mono)" }}>ID: {att.id.slice(0, 8)}</span>
+                          </div>
+                          <div className="d-card-body" style={{ padding: "12px 14px", display: "flex", flexDirection: "column", gap: 8 }}>
+                            <div className="kv-grid-3">
+                              <div className="kv-item"><div className="kv-k" style={{ fontSize: 8.5 }}>Started At</div><div className="kv-v" style={{ fontSize: 11 }}>{formatTimeIST(att.started_at)}</div></div>
+                              <div className="kv-item"><div className="kv-k" style={{ fontSize: 8.5 }}>Finished At</div><div className="kv-v" style={{ fontSize: 11 }}>{formatTimeIST(att.finished_at)}</div></div>
+                              <div className="kv-item"><div className="kv-k" style={{ fontSize: 8.5 }}>Exec Duration</div><div className="kv-v" style={{ fontSize: 11 }}>{att.execution_time_ms != null ? `${att.execution_time_ms}ms` : "—"}</div></div>
+                            </div>
+                            <div className="kv-grid-2">
+                              <div className="kv-item"><div className="kv-k" style={{ fontSize: 8.5 }}>Worker Node</div><div className="kv-v" style={{ fontSize: 11 }}>{att.worker_id} ({att.worker_hostname || "local"})</div></div>
+                              <div className="kv-item"><div className="kv-k" style={{ fontSize: 8.5 }}>Queue Latency</div><div className="kv-v" style={{ fontSize: 11 }}>{att.queue_latency_ms != null ? `${att.queue_latency_ms}ms` : "—"}</div></div>
+                            </div>
+                            {att.error && (
+                              <div style={{ marginTop: 8 }}>
+                                <div className="kv-k" style={{ fontSize: 8.5, color: "var(--red)" }}>Execution Error</div>
+                                <pre className="err-block" style={{ marginTop: 4 }}>
+                                  {att.error}
+                                  {att.stack_trace ? `\n\n${att.stack_trace}` : ""}
+                                </pre>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Worker map panel removed */}
+          </div>
+        </div>
+
+        <div className="lanes-panel">
+          <div className="lanes-header">
+            <span className="lanes-header-label"><i className="ti ti-stack-2"></i>Queue Lanes</span>
+
+          </div>
+          <div className="lanes-scroll" id="lanes-scroll">
+            <QueueLanes 
+              queues={stats?.queues} 
+              now={now} 
+              selectedJobId={selectedJobId}
+              onSelectJob={handleSelectJob}
             />
           </div>
-        </Accordion>
+        </div>
+
+        <div className="metrics-sidebar">
+          <DistributionBar total={t} stats={stats} />
+          <PerformanceMetrics throughput={stats?.throughput_last_60s ?? 0} stats={stats} />
+          <OutboxPanel outbox={stats?.outbox ?? { total: 0, pending: 0, processed: 0, failed: 0 }} />
+          <SeedJobs onSeeded={fetchStats} />
+        </div>
       </div>
-    </div>
+
+      <div className="execution-feed-row">
+        <ExecutionHistory 
+           attempts={attempts}
+           totalAttempts={totalAttempts}
+           feedSearch={feedSearch}
+           setFeedSearch={setFeedSearch}
+           expandedIds={expandedIds}
+           toggleExpand={(id) => setExpandedIds(prev => ({ ...prev, [id]: !prev[id] }))}
+           feedRef={feedRef}
+           loadMore={loadMore}
+           hasMore={hasMore}
+           loadingMore={loadingMore}
+        />
+      </div>
+    </>
   );
 }

@@ -1,0 +1,105 @@
+/* ─── SIDEBAR / ICON NAV (left rail) ─────────────────── */
+.icon-nav {
+  width: var(--nav-w);
+  flex-shrink: 0;
+  background: var(--surf);
+  border-right: 1px solid var(--b1);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 14px 0;
+  gap: 4px;
+  z-index: 10;
+}
+
+.nav-brand {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+  background: var(--blue-dim);
+  border: 1px solid var(--blue-ring);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--blue);
+  font-size: 14px;
+  margin-bottom: 12px;
+}
+
+.nav-sep {
+  width: 24px;
+  height: 1px;
+  background: var(--b1);
+  margin: 6px 0
+}
+
+.nav-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--t2);
+  font-size: 16px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all .15s;
+  position: relative;
+}
+
+.nav-btn:hover {
+  background: var(--card);
+  color: var(--t1);
+  border-color: var(--b1)
+}
+
+.nav-btn.active {
+  background: var(--card2);
+  color: var(--blue);
+  border-color: var(--blue-ring)
+}
+
+.nav-btn .nav-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--red);
+  border: 1.5px solid var(--surf);
+}
+
+.nav-bottom {
+  margin-top: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px
+}
+
+/* tooltip */
+.nav-btn[data-tip] {
+  position: relative
+}
+
+.nav-btn[data-tip]:hover::after {
+  content: attr(data-tip);
+  position: absolute;
+  left: calc(100% + 10px);
+  top: 50%;
+  transform: translateY(-50%);
+  background: var(--card3);
+  border: 1px solid var(--b2);
+  color: var(--t0);
+  font-size: 11px;
+  white-space: nowrap;
+  padding: 5px 9px;
+  border-radius: 5px;
+  pointer-events: none;
+  z-index: 999;
+  font-family: var(--sans);
+  font-weight: 400;
+  letter-spacing: 0;
+}
