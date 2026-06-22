@@ -78,28 +78,3 @@
   align-items: center;
   gap: 4px
 }
-
-/* tooltip */
-.nav-btn[data-tip] {
-  position: relative
-}
-
-.nav-btn[data-tip]:hover::after {
-  content: attr(data-tip);
-  position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
-  transform: translateY(-50%);
-  background: var(--card3);
-  border: 1px solid var(--b2);
-  color: var(--t0);
-  font-size: 11px;
-  white-space: nowrap;
-  padding: 5px 9px;
-  border-radius: 5px;
-  pointer-events: none;
-  z-index: 999;
-  font-family: var(--sans);
-  font-weight: 400;
-  letter-spacing: 0;
-}

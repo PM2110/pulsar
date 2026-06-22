@@ -625,3 +625,127 @@
   right: 0;
   height: 1.5px
 }
+
+/* ─── CONFIRM DIALOG ─── */
+.cd-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, .55);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: pls-fadeIn .15s var(--ease);
+  backdrop-filter: blur(2px);
+}
+
+.cd-dialog {
+  background: var(--surf);
+  border: 1px solid var(--b2);
+  border-radius: 12px;
+  width: 380px;
+  padding: 28px 28px 22px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .45);
+  animation: cd-slide-up .18s var(--ease);
+  text-align: center;
+}
+
+@keyframes cd-slide-up {
+  from { opacity: 0; transform: translateY(12px) scale(.97); }
+  to   { opacity: 1; transform: translateY(0)   scale(1);   }
+}
+
+.cd-icon-wrap {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.cd-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cd-title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--t0);
+  letter-spacing: -.01em;
+}
+
+.cd-message {
+  font-size: 12.5px;
+  color: var(--t2);
+  line-height: 1.55;
+}
+
+.cd-actions {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+  margin-top: 4px;
+}
+
+.cd-btn {
+  flex: 1;
+  padding: 8px 14px;
+  border-radius: 7px;
+  font-size: 12.5px;
+  font-weight: 500;
+  font-family: var(--sans);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all .12s var(--ease);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.cd-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.cd-btn-cancel {
+  background: var(--card2);
+  border-color: var(--b1);
+  color: var(--t1);
+}
+
+.cd-btn-cancel:hover:not(:disabled) {
+  background: var(--card3);
+  border-color: var(--b2);
+  color: var(--t0);
+}
+
+.cd-btn-confirm {
+  font-weight: 600;
+}
+
+.cd-btn-confirm:hover:not(:disabled) {
+  filter: brightness(1.15);
+}
+
+.cd-spinner {
+  width: 11px;
+  height: 11px;
+  border: 2px solid currentColor;
+  border-top-color: transparent;
+  border-radius: 50%;
+  animation: spin .6s linear infinite;
+  display: inline-block;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}

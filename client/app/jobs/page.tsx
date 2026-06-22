@@ -10,6 +10,7 @@ import type { SortOrder } from "../components/ui";
 import { SearchBar } from "../components/ui/SearchBar";
 import { Dropdown } from "../components/ui/Dropdown";
 import { Tooltip } from "../components/ui/Tooltip";
+import { ConfirmDialog } from "../components/ui/ConfirmDialog";
 
 const QUEUES = ["notifications", "media", "default"];
 const LIMIT = 10;
@@ -27,6 +28,8 @@ const JobsPage = () => {
   const [showAddDrawer, setShowAddDrawer] = useState(false);
   const [search, setSearch] = useState("");
   const [stats, setStats] = useState<any>(null);
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; type: string } | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   // Subscribe to real-time stats updates
   useEffect(() => {
@@ -83,13 +86,21 @@ const JobsPage = () => {
     }));
   };
 
-  const deleteJob = async (id: string, e: React.MouseEvent) => {
+  const deleteJob = (id: string, type: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!confirm("Delete this job?")) return;
-    await apiService.deleteJob(id);
-    fetchJobs();
-    if (selectedJob?.id === id) {
-      setSelectedJob(null);
+    setDeleteConfirm({ id, type });
+  };
+
+  const confirmDelete = async () => {
+    if (!deleteConfirm) return;
+    setDeleting(true);
+    try {
+      await apiService.deleteJob(deleteConfirm.id);
+      fetchJobs();
+      if (selectedJob?.id === deleteConfirm.id) setSelectedJob(null);
+    } finally {
+      setDeleting(false);
+      setDeleteConfirm(null);
     }
   };
 
@@ -144,7 +155,7 @@ const JobsPage = () => {
 
   const renderSortIcon = (key: string) => {
     if (!sort || sort.key !== key) {
-      return <i className="ti ti-selector sort-ico"></i>;
+      return <i className="ti ti-arrows-sort sort-ico"></i>;
     }
     return sort.order === "asc" ? (
       <i className="ti ti-chevron-up sort-ico"></i>
@@ -186,10 +197,6 @@ const JobsPage = () => {
         </div>
         <div className="topbar-sep"></div>
         <div className="tb-pill">v2.0</div>
-        <div className="topbar-sep"></div>
-        <div className="tb-live">
-          <span className="live-dot"></span>WebSocket Live
-        </div>
 
         <div className="topbar-right">
           <button className="btn-action btn-primary" onClick={() => setShowAddDrawer(true)}>
@@ -390,7 +397,7 @@ const JobsPage = () => {
                       <Tooltip text="Delete Job">
                         <button
                           className="btn-tool"
-                          onClick={(e) => deleteJob(job.id, e)}
+                          onClick={(e) => deleteJob(job.id, job.job_type, e)}
                         >
                           <i className="ti ti-x"></i>
                         </button>
@@ -629,6 +636,17 @@ const JobsPage = () => {
       {showAddDrawer && (
         <AddJobDrawer onClose={() => setShowAddDrawer(false)} onAdded={fetchJobs} />
       )}
+
+      <ConfirmDialog
+        open={!!deleteConfirm}
+        onCancel={() => setDeleteConfirm(null)}
+        onConfirm={confirmDelete}
+        title="Delete Job"
+        message={deleteConfirm ? `Remove "${deleteConfirm.type}" job from the queue? This action cannot be undone.` : ""}
+        confirmLabel="Delete Job"
+        variant="danger"
+        loading={deleting}
+      />
     </>
   );
 };

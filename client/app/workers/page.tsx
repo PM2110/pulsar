@@ -55,14 +55,6 @@ export default function WorkersPage() {
 
   const match = (w: WorkerInfo) => !search || w.worker_id.toLowerCase().includes(search.toLowerCase()) || w.queue_name.toLowerCase().includes(search.toLowerCase());
 
-  const injectLoadShortcut = async () => {
-    setSeeding(true);
-    try {
-      await apiService.seedJobs({ count: 5 });
-    } catch { }
-    setSeeding(false);
-  };
-
   const groups = [];
   if (view === "all" || view === "active") {
     groups.push({ label: "Active Workers", list: active.filter(match), key: "active" });
@@ -82,10 +74,6 @@ export default function WorkersPage() {
         </div>
         <div className="topbar-sep"></div>
         <div className="tb-pill">v2.0</div>
-        <div className="topbar-sep"></div>
-        <div className="tb-live">
-          <span className="live-dot"></span>WebSocket Live
-        </div>
         <div className="topbar-right">
           <Tooltip text="Refresh">
             <div className="tb-icon" onClick={fetchWorkers}>
@@ -144,10 +132,6 @@ export default function WorkersPage() {
             Inactive <span className="cnt">{inactive.length}</span>
           </div>
         </div>
-        <div style={{ flex: 1 }}></div>
-        <button className="btn-action" onClick={injectLoadShortcut} disabled={seeding}>
-          <i className="ti ti-bolt"></i>{seeding ? "Injecting..." : "Inject Load"}
-        </button>
       </div>
 
       <div className="body-split">

@@ -1,65 +1,27 @@
 /* ─── TOOLTIP ─── */
 .pls-tooltip {
-  position: fixed;
   z-index: 9999;
-  padding: 7px 12px;
-  background: var(--bg-card);
-  color: var(--text-primary);
-  font-size: 11.5px;
+  padding: 6px 11px;
+  background: var(--card3);
+  color: var(--t0);
+  font-size: 11px;
   font-weight: 500;
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-lg);
-  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.35);
+  border: 1px solid var(--b2);
   pointer-events: none;
   opacity: 0;
-  transition: opacity .12s var(--ease);
+  transition: opacity .1s var(--ease);
   max-width: 260px;
   line-height: 1.4;
-}
-
-[data-theme="light"] .pls-tooltip {
-  background: #1e293b;
-  color: #f8fafc;
-  border-color: #334155;
+  white-space: nowrap;
+  font-family: var(--sans);
 }
 
 .pls-tooltip--visible {
   opacity: 1;
 }
 
-.pls-tooltip--top::after {
-  content: '';
-  position: absolute;
-  bottom: -5px;
-  left: 50%;
-  transform: translateX(-50%) rotate(45deg);
-  width: 9px;
-  height: 9px;
-  background: inherit;
-  border-right: 1px solid var(--border-strong);
-  border-bottom: 1px solid var(--border-strong);
-}
-
-[data-theme="light"] .pls-tooltip--top::after {
-  border-color: #334155;
-}
-
-.pls-tooltip--bottom::after {
-  content: '';
-  position: absolute;
-  top: -5px;
-  left: 50%;
-  transform: translateX(-50%) rotate(45deg);
-  width: 9px;
-  height: 9px;
-  background: inherit;
-  border-left: 1px solid var(--border-strong);
-  border-top: 1px solid var(--border-strong);
-}
-
-[data-theme="light"] .pls-tooltip--bottom::after {
-  border-color: #334155;
-}
 
 /* ─── SEARCH BAR ─── */
 .pls-search {

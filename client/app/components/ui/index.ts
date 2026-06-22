@@ -17,3 +17,4 @@ export type { Column, SortState, SortOrder } from "./Table";
 export { Pagination } from "./Pagination";
 export { Modal, ModalHeader, ModalBody } from "./Modal";
 export { Drawer } from "./Drawer";
+export { ConfirmDialog } from "./ConfirmDialog";
