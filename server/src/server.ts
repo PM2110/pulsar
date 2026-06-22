@@ -19,9 +19,13 @@ const start = async () => {
     const httpServer = createServer(app)
     
     // Attach Socket.IO
+    const allowedOrigins = process.env.ALLOWED_ORIGINS
+      ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim().replace(/\/$/, ''))
+      : false;
+
     const io = new SocketIOServer(httpServer, {
       cors: {
-        origin: env.NODE_ENV === 'production' ? (process.env.ALLOWED_ORIGINS?.split(',') || false) : true,
+        origin: env.NODE_ENV === 'production' ? allowedOrigins : true,
         credentials: true
       }
     })
