@@ -71,10 +71,10 @@ export function Tooltip({
     width: 8,
     height: 8,
     background: "var(--card3)",
-    borderRight: side === "bottom" || side === "right" ? "none" : "1px solid var(--b2)",
-    borderBottom: side === "top"    || side === "right" ? "none" : "1px solid var(--b2)",
-    borderLeft: side === "top"      || side === "left"  ? "none" : "1px solid var(--b2)",
-    borderTop:  side === "bottom"   || side === "left"  ? "none" : "1px solid var(--b2)",
+    borderTop: side === "bottom" || side === "left" ? "1px solid var(--b2)" : "none",
+    borderLeft: side === "bottom" || side === "right" ? "1px solid var(--b2)" : "none",
+    borderBottom: side === "top" || side === "right" ? "1px solid var(--b2)" : "none",
+    borderRight: side === "top" || side === "left" ? "1px solid var(--b2)" : "none",
   };
 
   return (

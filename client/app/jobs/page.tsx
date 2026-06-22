@@ -155,7 +155,7 @@ const JobsPage = () => {
 
   const renderSortIcon = (key: string) => {
     if (!sort || sort.key !== key) {
-      return <i className="ti ti-selector sort-ico"></i>;
+      return <i className="ti ti-arrows-sort sort-ico"></i>;
     }
     return sort.order === "asc" ? (
       <i className="ti ti-chevron-up sort-ico"></i>

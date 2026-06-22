@@ -110,6 +110,7 @@
   border-bottom: 1px solid var(--b1);
   user-select: none;
   cursor: pointer;
+  white-space: nowrap;
 }
 
 .data-table th:hover {
@@ -117,13 +118,22 @@
 }
 
 .data-table th .sort-ico {
-  font-size: 9px;
+  font-size: 11px;
   margin-left: 4px;
-  color: var(--t3);
+  color: var(--t2);
+  opacity: 0.5;
+  transition: opacity 0.1s ease, color 0.1s ease;
+  vertical-align: middle;
+}
+
+.data-table th:hover .sort-ico {
+  opacity: 1;
+  color: var(--t1);
 }
 
 .data-table th.sorted .sort-ico {
   color: var(--blue);
+  opacity: 1;
 }
 
 .data-table tr {

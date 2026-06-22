@@ -55,7 +55,7 @@ export default function DashboardPage() {
   const fetchStats = useCallback(async () => {
     try {
       setStats(await apiService.getStats());
-    } catch {}
+    } catch { }
   }, []);
 
   useEffect(() => {
@@ -79,7 +79,7 @@ export default function DashboardPage() {
         if (active) {
           setSelectedJobDetails(data);
         }
-      } catch {}
+      } catch { }
     };
     loadDetails();
     return () => {
@@ -110,7 +110,7 @@ export default function DashboardPage() {
       });
       setHasMore(pagination.hasMore ?? false);
       setTotalAttempts(pagination.totalRecords || 0);
-    } catch {} finally {
+    } catch { } finally {
       isFetchingRef.current = false;
       setLoadingMore(false);
     }
@@ -141,10 +141,10 @@ export default function DashboardPage() {
           return nextVal;
         });
       }
-      
+
       // Handle details refresh if currently selected job gets updated
       if (selectedJobId && (data.job_id === selectedJobId || data.attempt?.job_id === selectedJobId)) {
-        apiService.getJobDetails(selectedJobId).then(setSelectedJobDetails).catch(() => {});
+        apiService.getJobDetails(selectedJobId).then(setSelectedJobDetails).catch(() => { });
       }
     };
     socket.on("job_update", handleEvent);
@@ -213,9 +213,6 @@ export default function DashboardPage() {
           )}
           <Tooltip text="Refresh">
             <div className="tb-icon" onClick={fetchStats}><i className="ti ti-refresh"></i></div>
-          </Tooltip>
-          <Tooltip text="Filter">
-            <div className="tb-icon"><i className="ti ti-filter"></i></div>
           </Tooltip>
         </div>
       </div>
@@ -289,25 +286,24 @@ export default function DashboardPage() {
                         selectedJobDetails.job.status === "processing"
                           ? { background: "var(--blue-dim)", border: "1px solid var(--blue-ring)", color: "#7BA8FF" }
                           : selectedJobDetails.job.status === "pending"
-                          ? { background: "var(--card3)", border: "1px solid var(--b2)", color: "var(--t2)" }
-                          : selectedJobDetails.job.status === "delayed"
-                          ? { background: "var(--amber-dim)", border: "1px solid var(--amber-ring)", color: "var(--amber)" }
-                          : { background: "var(--red-dim)", border: "1px solid var(--red-ring)", color: "var(--red)" }
+                            ? { background: "var(--card3)", border: "1px solid var(--b2)", color: "var(--t2)" }
+                            : selectedJobDetails.job.status === "delayed"
+                              ? { background: "var(--amber-dim)", border: "1px solid var(--amber-ring)", color: "var(--amber)" }
+                              : { background: "var(--red-dim)", border: "1px solid var(--red-ring)", color: "var(--red)" }
                       }>
                         <i className="ti ti-activity" style={{ fontSize: 17 }}></i>
                       </div>
                       <div className="detail-hero-body">
                         <div className="detail-type">{selectedJobDetails.job.job_type}</div>
                         <div className="detail-meta-row">
-                          <span className={`status-badge-lg ${
-                            selectedJobDetails.job.status === "processing" ? "sb-proc" :
-                            selectedJobDetails.job.status === "pending" ? "sb-pend" :
-                            selectedJobDetails.job.status === "delayed" ? "sb-delay" : "sb-fail"
-                          }`}>
+                          <span className={`status-badge-lg ${selectedJobDetails.job.status === "processing" ? "sb-proc" :
+                              selectedJobDetails.job.status === "pending" ? "sb-pend" :
+                                selectedJobDetails.job.status === "delayed" ? "sb-delay" : "sb-fail"
+                            }`}>
                             <span className={`sb-dot ${selectedJobDetails.job.status === "processing" ? "pulse" : ""}`} style={{
                               background: selectedJobDetails.job.status === "processing" ? "#7BA8FF" :
-                                          selectedJobDetails.job.status === "pending" ? "var(--t3)" :
-                                          selectedJobDetails.job.status === "delayed" ? "var(--amber)" : "var(--red)"
+                                selectedJobDetails.job.status === "pending" ? "var(--t3)" :
+                                  selectedJobDetails.job.status === "delayed" ? "var(--amber)" : "var(--red)"
                             }}></span>
                             {selectedJobDetails.job.status}
                           </span>
@@ -457,9 +453,8 @@ export default function DashboardPage() {
                               <span className="mini-badge" style={{ background: "var(--card3)", color: "var(--t1)", border: "1px solid var(--b2)" }}>
                                 Attempt #{att.business_attempt}{att.infra_attempt > 0 ? ` (Infra #${att.infra_attempt})` : ""}
                               </span>
-                              <span className={`mini-badge ${
-                                att.status === "completed" ? "mb-done" : att.status === "failed" ? "mb-fail" : "mb-proc"
-                              }`}>{att.status}</span>
+                              <span className={`mini-badge ${att.status === "completed" ? "mb-done" : att.status === "failed" ? "mb-fail" : "mb-proc"
+                                }`}>{att.status}</span>
                             </div>
                             <span style={{ fontSize: 10, color: "var(--t2)", fontFamily: "var(--mono)" }}>ID: {att.id.slice(0, 8)}</span>
                           </div>
@@ -501,9 +496,9 @@ export default function DashboardPage() {
 
           </div>
           <div className="lanes-scroll" id="lanes-scroll">
-            <QueueLanes 
-              queues={stats?.queues} 
-              now={now} 
+            <QueueLanes
+              queues={stats?.queues}
+              now={now}
               selectedJobId={selectedJobId}
               onSelectJob={handleSelectJob}
             />
@@ -519,17 +514,17 @@ export default function DashboardPage() {
       </div>
 
       <div className="execution-feed-row">
-        <ExecutionHistory 
-           attempts={attempts}
-           totalAttempts={totalAttempts}
-           feedSearch={feedSearch}
-           setFeedSearch={setFeedSearch}
-           expandedIds={expandedIds}
-           toggleExpand={(id) => setExpandedIds(prev => ({ ...prev, [id]: !prev[id] }))}
-           feedRef={feedRef}
-           loadMore={loadMore}
-           hasMore={hasMore}
-           loadingMore={loadingMore}
+        <ExecutionHistory
+          attempts={attempts}
+          totalAttempts={totalAttempts}
+          feedSearch={feedSearch}
+          setFeedSearch={setFeedSearch}
+          expandedIds={expandedIds}
+          toggleExpand={(id) => setExpandedIds(prev => ({ ...prev, [id]: !prev[id] }))}
+          feedRef={feedRef}
+          loadMore={loadMore}
+          hasMore={hasMore}
+          loadingMore={loadingMore}
         />
       </div>
     </>
