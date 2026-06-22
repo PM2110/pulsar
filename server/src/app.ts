@@ -36,9 +36,13 @@ if (env.NODE_ENV === 'production') {
 app.use(logger.middleware)
 
 // CORS
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(o => o.trim().replace(/\/$/, ''))
+  : false;
+
 app.use(cors({
   origin: env.NODE_ENV === 'production'
-    ? (process.env.ALLOWED_ORIGINS?.split(',') || false)
+    ? allowedOrigins
     : true,
   credentials: true
 }))
