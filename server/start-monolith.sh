@@ -42,7 +42,7 @@ cleanup() {
   echo "All services stopped."
 }
 
-trap cleanup SIGINT SIGTERM
+trap cleanup INT TERM
 
 # Wait for all background jobs to finish (which is never, unless they crash or stop)
 wait $API_PID $NOTIF_PID $MEDIA_PID
