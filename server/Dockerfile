@@ -41,9 +41,11 @@ RUN pnpm install --prod --frozen-lockfile
 # Copy built assets from builder stage
 COPY --from=builder /app/dist ./dist
 
-# Create a non-root user for security
-# Alpine node image already has a 'node' user
-RUN chown -R node:node /app
+# Copy startup script
+COPY start-monolith.sh ./
+
+# Create a non-root user for security and set permissions
+RUN chmod +x start-monolith.sh && chown -R node:node /app
 
 # Switch to non-root user
 USER node
@@ -51,5 +53,5 @@ USER node
 # Expose the application port
 EXPOSE 3000
 
-# Start the application
-CMD ["node", "dist/server.js"]
+# Start the application using the monolith script
+CMD ["./start-monolith.sh"]
