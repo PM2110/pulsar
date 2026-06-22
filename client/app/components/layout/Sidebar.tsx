@@ -37,11 +37,6 @@ export function Sidebar() {
             <i className={`ti ${theme === "dark" ? "ti-sun" : "ti-moon"}`}></i>
           </div>
         </Tooltip>
-        <Tooltip text="Settings" placement="right">
-          <div className="nav-btn">
-            <i className="ti ti-settings"></i>
-          </div>
-        </Tooltip>
       </div>
     </nav>
   );

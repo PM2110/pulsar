@@ -197,10 +197,6 @@ const JobsPage = () => {
         </div>
         <div className="topbar-sep"></div>
         <div className="tb-pill">v2.0</div>
-        <div className="topbar-sep"></div>
-        <div className="tb-live">
-          <span className="live-dot"></span>WebSocket Live
-        </div>
 
         <div className="topbar-right">
           <button className="btn-action btn-primary" onClick={() => setShowAddDrawer(true)}>

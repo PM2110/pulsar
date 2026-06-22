@@ -200,8 +200,6 @@ export default function DashboardPage() {
         </div>
         <div className="topbar-sep"></div>
         <div className="tb-pill">v2.0</div>
-        <div className="topbar-sep"></div>
-        <div className="tb-live"><span className="live-dot"></span>Live</div>
         <div className="topbar-right">
           {(stats?.stuck_jobs_count || 0) > 0 && (
             <Tooltip text={`${stats!.stuck_jobs_count} stuck jobs`}>
@@ -297,8 +295,8 @@ export default function DashboardPage() {
                         <div className="detail-type">{selectedJobDetails.job.job_type}</div>
                         <div className="detail-meta-row">
                           <span className={`status-badge-lg ${selectedJobDetails.job.status === "processing" ? "sb-proc" :
-                              selectedJobDetails.job.status === "pending" ? "sb-pend" :
-                                selectedJobDetails.job.status === "delayed" ? "sb-delay" : "sb-fail"
+                            selectedJobDetails.job.status === "pending" ? "sb-pend" :
+                              selectedJobDetails.job.status === "delayed" ? "sb-delay" : "sb-fail"
                             }`}>
                             <span className={`sb-dot ${selectedJobDetails.job.status === "processing" ? "pulse" : ""}`} style={{
                               background: selectedJobDetails.job.status === "processing" ? "#7BA8FF" :
