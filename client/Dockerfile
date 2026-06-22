@@ -9,6 +9,7 @@ RUN corepack enable && corepack prepare pnpm@latest --activate
 COPY package.json pnpm-lock.yaml* pnpm-workspace.yaml* ./
 
 # Install dependencies
+ENV CI=true
 RUN pnpm install
 
 # Copy application files
