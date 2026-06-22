@@ -311,7 +311,7 @@ export const jobController = {
       const updateQuery = `
         UPDATE jobs
         SET status = 'pending', 
-            attempts = 0, 
+            max_attempts = max_attempts + 1, 
             infra_attempts = 0, 
             last_error = NULL, 
             failed_at = NULL, 
