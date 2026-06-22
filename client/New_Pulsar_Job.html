@@ -892,10 +892,10 @@
         // Matrix Generation for exact alignment match
         let matrixHtml = `<div class="attempts-matrix">`;
         for (let i = 0; i < job.max_attempts; i++) {
-          if (i < job.attempts) {
-            matrixHtml += `<div class="att-dot ${job.status === 'completed' ? 'done-ok' : 'done-fail'}"></div>`;
-          } else if (i === job.attempts && job.status === 'processing') {
+          if (job.status === 'processing' && i === job.attempts - 1) {
             matrixHtml += `<div class="att-dot current-run"></div>`;
+          } else if (i < job.attempts) {
+            matrixHtml += `<div class="att-dot ${job.status === 'completed' ? 'done-ok' : 'done-fail'}"></div>`;
           } else {
             matrixHtml += `<div class="att-dot empty"></div>`;
           }

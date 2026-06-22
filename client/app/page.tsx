@@ -455,7 +455,7 @@ export default function DashboardPage() {
                           <div className="d-card-head" style={{ padding: "10px 14px" }}>
                             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                               <span className="mini-badge" style={{ background: "var(--card3)", color: "var(--t1)", border: "1px solid var(--b2)" }}>
-                                Attempt #{selectedJobDetails.attempts.length - index}
+                                Attempt #{att.business_attempt}{att.infra_attempt > 0 ? ` (Infra #${att.infra_attempt})` : ""}
                               </span>
                               <span className={`mini-badge ${
                                 att.status === "completed" ? "mb-done" : att.status === "failed" ? "mb-fail" : "mb-proc"

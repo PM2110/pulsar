@@ -158,10 +158,10 @@ const JobsPage = () => {
       <div className="attempts-matrix">
         {Array.from({ length: job.max_attempts }).map((_, i) => {
           let dotClass = "empty";
-          if (i < job.attempts) {
-            dotClass = job.status === "completed" ? "done-ok" : "done-fail";
-          } else if (i === job.attempts && job.status === "processing") {
+          if (job.status === "processing" && i === job.attempts - 1) {
             dotClass = "current-run";
+          } else if (i < job.attempts) {
+            dotClass = job.status === "completed" ? "done-ok" : "done-fail";
           }
           return <div key={i} className={`att-dot ${dotClass}`}></div>;
         })}
